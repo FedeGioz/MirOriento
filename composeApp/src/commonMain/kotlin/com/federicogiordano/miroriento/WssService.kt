@@ -75,7 +75,7 @@ class WebSocketClient(
         _errorDetails.value = null
 
         try {
-            println("Attempting to connect to WebSocket at $serverUrl:$port/connect")
+            println("Tentativo di connessione a WebSocket su $serverUrl:$port/connect")
 
             connectionJob = scope.launch {
                 try {
@@ -103,16 +103,16 @@ class WebSocketClient(
                                 }
                             }
                         } catch (e: Exception) {
-                            _errorMessage.value = "Error receiving message: ${e.message}"
+                            _errorMessage.value = "Errore nella ricezione del messaggio: ${e.message}"
                             _connectionState.value = ConnectionState.ERROR
                         }
                     }
                 } catch (e: Exception) {
-                    val errorMsg = "Connection error: ${e.message}"
+                    val errorMsg = "Errore di connessione: ${e.message}"
                     _errorMessage.value = errorMsg
                     _errorDetails.value = e.stackTraceToString()
 
-                    println("WebSocket error: ${e.message}")
+                    println("Errore WebSocket: ${e.message}")
                     println(e.stackTraceToString())
 
                     _connectionState.value = ConnectionState.ERROR
@@ -123,17 +123,17 @@ class WebSocketClient(
                 }
             }
         } catch (e: Exception) {
-            _errorMessage.value = "Failed to start connection: ${e.message}"
+            _errorMessage.value = "Impossibile avviare la connessione: ${e.message}"
             _connectionState.value = ConnectionState.ERROR
         }
     }
 
     suspend fun disconnect() {
         try {
-            webSocketSession?.close(CloseReason(CloseReason.Codes.NORMAL, "Client disconnected"))
+            webSocketSession?.close(CloseReason(CloseReason.Codes.NORMAL, "Client disconnesso"))
             connectionJob?.cancelAndJoin()
         } catch (e: Exception) {
-            _errorMessage.value = "Error during disconnect: ${e.message}"
+            _errorMessage.value = "Errore durante la disconnessione: ${e.message}"
         } finally {
             _connectionState.value = ConnectionState.DISCONNECTED
         }
@@ -145,7 +145,7 @@ class WebSocketClient(
             try {
                 session.send(Frame.Text(Json.encodeToString(message)))
             } catch (e: Exception) {
-                _errorMessage.value = "Error sending message: ${e.message}"
+                _errorMessage.value = "Errore durante l'invio del messaggio: ${e.message}"
                 _connectionState.value = ConnectionState.ERROR
             }
         }
@@ -154,30 +154,30 @@ class WebSocketClient(
     suspend fun sendQuizAnswer(answer: String) {
         sendMessage(
             WebSocketMessage(
-            type = "QUIZ_ANSWER",
-            content = answer,
-            sender = studentInfo.id
-        )
+                type = "QUIZ_ANSWER",
+                content = answer,
+                sender = studentInfo.id
+            )
         )
     }
 
-    suspend fun requestHelp(message: String = "Need assistance") {
+    suspend fun requestHelp(message: String = "Ho bisogno di assistenza") {
         sendMessage(
             WebSocketMessage(
-            type = "HELP_REQUEST",
-            content = message,
-            sender = studentInfo.id
-        )
+                type = "HELP_REQUEST",
+                content = message,
+                sender = studentInfo.id
+            )
         )
     }
 
     suspend fun sendChatMessage(content: String) {
         sendMessage(
             WebSocketMessage(
-            type = "CHAT",
-            content = content,
-            sender = studentInfo.id
-        )
+                type = "CHAT",
+                content = content,
+                sender = studentInfo.id
+            )
         )
     }
 

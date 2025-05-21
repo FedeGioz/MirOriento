@@ -49,6 +49,7 @@ kotlin {
             implementation(libs.ktor.client.cio)
             implementation(libs.ktor.client.okhttp)
             implementation(libs.kotlinx.serialization.json)
+            implementation(libs.navigation.compose)
         }
     }
 }

@@ -5,6 +5,9 @@ import io.ktor.network.sockets.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import io.ktor.utils.io.errors.IOException
+
+internal expect suspend fun getGatewayIpAddress(): String?
 
 class PortScanner {
     private val _scanStatus = MutableStateFlow<ScanStatus>(ScanStatus.NotStarted)
@@ -20,52 +23,44 @@ class PortScanner {
 
     suspend fun findProfessorDevice(): String? {
         _scanStatus.value = ScanStatus.Scanning
-        log("Avvio scansione di rete per il dispositivo del professore")
+        log("Avvio scansione del dispositivo del professore...")
 
-        return try {
-            val deviceIPs = getLocalIpAddresses()
-            log("Trovati i seguenti IP sul dispositivo: ${deviceIPs.joinToString()}")
+        val prioritizedIp = "192.168.12.166"
+        log("Verifica IP prioritario: $prioritizedIp")
+        if (isPortOpen(prioritizedIp, 8080)) {
+            _scanStatus.value = ScanStatus.Found(prioritizedIp)
+            log("Dispositivo del professore trovato all'IP prioritario: $prioritizedIp")
+            return prioritizedIp
+        }
 
-            val networkAddresses = getNetworkAddresses(deviceIPs)
-            if (networkAddresses.isEmpty()) {
-                log("⚠️ Impossibile determinare gli indirizzi di rete")
-                _scanStatus.value = ScanStatus.Error("Nessuna interfaccia di rete trovata")
-                return null
-            }
+        log("Tentativo di recuperare l'IP del gateway...")
+        val gatewayIp = getGatewayIpAddress()
 
-            log("Verranno scansionate le seguenti reti: ${networkAddresses.joinToString { "${it.first}/${it.second}" }}")
-
-            for ((networkPrefix, subnetMask) in networkAddresses) {
-                log("Scansione della rete: $networkPrefix/$subnetMask")
-
-                val ipList = generateIpRange(networkPrefix, subnetMask)
-                log("Generati ${ipList.size} IP da scansionare in questa sottorete")
-
-                for (ip in ipList) {
-                    log("Controllo $ip:8080...")
-
-                    if (isPortOpen(ip, 8080)) {
-                        log("✓ Trovato il dispositivo del professore a $ip:8080")
-                        _scanStatus.value = ScanStatus.Found(ip)
-                        return ip
-                    }
+        if (gatewayIp != null) {
+            log("IP del gateway ottenuto: $gatewayIp. Verifica porta...")
+            if (gatewayIp == prioritizedIp) {
+                log("L'IP del gateway ($gatewayIp) è uguale all'IP prioritario già controllato.")
+            } else {
+                if (isPortOpen(gatewayIp, 8080)) {
+                    _scanStatus.value = ScanStatus.Found(gatewayIp)
+                    log("Dispositivo del professore trovato all'IP del gateway: $gatewayIp")
+                    return gatewayIp
+                } else {
+                    log("Porta 8080 non aperta sull'IP del gateway: $gatewayIp")
                 }
             }
-
-            log("❌ Nessun dispositivo del professore trovato su alcuna rete")
-            _scanStatus.value = ScanStatus.NotFound
-            null
-        } catch (e: Exception) {
-            log("⚠️ Errore durante la scansione: ${e.message}")
-            e.printStackTrace()
-            _scanStatus.value = ScanStatus.Error(e.message ?: "Errore sconosciuto")
-            null
+        } else {
+            log("Impossibile determinare l'IP del gateway. Controlla le implementazioni 'actual' di getGatewayIpAddress().")
         }
+
+        log("Dispositivo del professore non trovato (controllati IP prioritario e gateway).")
+        _scanStatus.value = ScanStatus.NotFound
+        return null
     }
 
     private suspend fun isPortOpen(ip: String, port: Int): Boolean = withContext(Dispatchers.IO) {
         try {
-            withTimeoutOrNull(10_000) {
+            withTimeoutOrNull(700) {
                 try {
                     val socket = aSocket(SelectorManager(Dispatchers.IO))
                         .tcp()
@@ -75,47 +70,31 @@ class PortScanner {
                     log("Connesso a $ip:$port con successo ✓")
                     socket.close()
                     true
-                } catch (e: Exception) {
+                } catch (e: IOException) {
+                    val errorMessage = e.message?.lowercase() ?: ""
                     when {
-                        e.message?.contains("Connection refused") == true ->
-                            log("Connessione rifiutata su $ip:$port (l'host esiste ma la porta è chiusa)")
-                        e.message?.contains("timed out") == true ->
-                            log("Timeout su $ip:$port (l'host probabilmente non esiste)")
+                        errorMessage.contains("connection refused") ->
+                            log("Connessione rifiutata su $ip:$port (host attivo, porta chiusa o firewall)")
+                        errorMessage.contains("no route to host") ->
+                            log("Nessun percorso per l'host $ip:$port (host irraggiungibile o rete mal configurata)")
+                        errorMessage.contains("timed out") || errorMessage.contains("timeout") ->
+                            log("Timeout di connessione o del socket su $ip:$port (host non risponde, porta filtrata, o timeout specifico di Ktor)")
                         else ->
-                            log("Fallito tentativo di connessione a $ip:$port: ${e.message}")
+                            log("Fallito tentativo di connessione a $ip:$port (IOException): ${e::class.simpleName} - ${e.message}")
                     }
+                    false
+                } catch (e: Exception) {
+                    log("Fallito tentativo di connessione a $ip:$port: ${e::class.simpleName} - ${e.message}")
                     false
                 }
             } ?: run {
-                log("⏱ Operazione scaduta dopo 10 secondi per $ip:$port")
+                log("Timeout generale (withTimeoutOrNull) durante il tentativo di connessione a $ip:$port")
                 false
             }
         } catch (e: Exception) {
-            log("⚠️ Errore inaspettato durante il controllo di $ip:$port: ${e.message}")
+            log("Errore imprevisto durante la verifica di $ip:$port: ${e::class.simpleName} - ${e.message}")
             false
         }
-    }
-
-    private fun getLocalIpAddresses(): List<String> {
-        return listOf("192.168.1.5", "10.0.2.15")
-    }
-
-    private fun getNetworkAddresses(ips: List<String>): List<Pair<String, Int>> {
-        val result = mutableListOf<Pair<String, Int>>()
-
-        for (ip in ips) {
-            val parts = ip.split(".")
-            if (parts.size == 4) {
-                val network = "${parts[0]}.${parts[1]}.${parts[2]}"
-                result.add(Pair(network, 24))
-            }
-        }
-
-        return result
-    }
-
-    private fun generateIpRange(networkPrefix: String, cidr: Int): List<String> {
-        return (1..254).map { "$networkPrefix.$it" }
     }
 
     sealed class ScanStatus {

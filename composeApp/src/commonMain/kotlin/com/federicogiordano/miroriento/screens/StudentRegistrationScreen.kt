@@ -80,7 +80,7 @@ fun StudentRegistrationScreen(navController: NavController, studentViewModel: St
                 studentViewModel.saveStudentInfo(
                     StudentInfo(name, city, selectedFocus)
                 )
-                navController.navigate(Screens.Waiting.route) // Use route instead of name
+                navController.navigate(Screens.Waiting.route)
             },
             modifier = Modifier.fillMaxWidth(),
             enabled = name.isNotBlank() && city.isNotBlank()

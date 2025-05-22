@@ -60,12 +60,12 @@ class PortScanner {
 
     private suspend fun isPortOpen(ip: String, port: Int): Boolean = withContext(Dispatchers.IO) {
         try {
-            withTimeoutOrNull(700) {
+            withTimeoutOrNull(500L) {
                 try {
                     val socket = aSocket(SelectorManager(Dispatchers.IO))
                         .tcp()
                         .connect(InetSocketAddress(ip, port)) {
-                            socketTimeout = 500
+                            socketTimeout = 300
                         }
                     log("Connesso a $ip:$port con successo ✓")
                     socket.close()

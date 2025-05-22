@@ -15,9 +15,11 @@ import com.federicogiordano.miroriento.WebSocketClient
 import com.federicogiordano.miroriento.network.PortScanner
 import com.federicogiordano.miroriento.viewmodels.StudentViewModel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import java.util.UUID
 
 enum class Screens(val route: String) {
-    Home("home"),
+    Quiz("quiz/{serverIp}/{studentId}/{studentName}"),
     Registration("registration"),
     Waiting("waiting")
 }
@@ -30,19 +32,36 @@ fun WaitingScreen(navController: NavController, studentViewModel: StudentViewMod
     val scanStatus by portScanner.scanStatus.collectAsState()
     val scanLog by portScanner.scanLog.collectAsState()
 
-    val studentInfo by studentViewModel.studentInfo.collectAsState()
+    val studentInfoState by studentViewModel.studentInfo.collectAsState()
 
-    val webSocketClient = remember {
+    val currentStudentId = remember(studentInfoState) {
+        studentInfoState?.name?.replace(" ", "_")?.take(20) ?: "student_${UUID.randomUUID().toString().take(8)}"
+    }
+    val currentStudentName = remember(studentInfoState) {
+        studentInfoState?.name ?: "Studente Sconosciuto"
+    }
+
+    val webSocketClient = remember(currentStudentId, currentStudentName) {
         WebSocketClient(
             serverUrl = "",
             port = 8080,
             studentInfo = StudentConnection(
-                name = studentInfo?.name ?: "Studente Sconosciuto",
-                id = "null"
+                id = currentStudentId,
+                name = currentStudentName
             )
         )
     }
     val connectionState by webSocketClient.connectionState.collectAsState()
+    val coroutineScope = rememberCoroutineScope()
+
+    DisposableEffect(webSocketClient) {
+        onDispose {
+            coroutineScope.launch {
+                println("WaitingScreen: Disposing WebSocketClient from WaitingScreen.")
+                webSocketClient.disconnect()
+            }
+        }
+    }
 
     LaunchedEffect(key1 = true) {
         while (true) {
@@ -51,53 +70,69 @@ fun WaitingScreen(navController: NavController, studentViewModel: StudentViewMod
         }
     }
 
-    LaunchedEffect(key1 = scanStatus) {
-        when (scanStatus) {
+    LaunchedEffect(key1 = scanStatus, studentInfoState) {
+        val studentNameForConnection = studentInfoState?.name ?: "Studente Sconosciuto"
+        val studentIdForConnection = studentInfoState?.name?.replace(" ", "_")?.take(20) ?: currentStudentId
+
+
+        when (val currentScanStatus = scanStatus) {
             is PortScanner.ScanStatus.Found -> {
-                val ipAddress = (scanStatus as PortScanner.ScanStatus.Found).ipAddress
                 statusMessage = "Dispositivo del professore trovato. Connessione in corso..."
                 webSocketClient.updateConnectionParams(
-                    newUrl = ipAddress,
+                    newUrl = currentScanStatus.ipAddress,
                     newPort = 8080,
                     newStudentInfo = StudentConnection(
-                        id = "null",
-                        name = studentInfo?.name ?: "Studente Sconosciuto"
+                        id = studentIdForConnection,
+                        name = studentNameForConnection
                     )
                 )
-                webSocketClient.connect()
+                coroutineScope.launch { webSocketClient.connect() }
             }
             is PortScanner.ScanStatus.NotFound -> {
                 statusMessage = "Nessun dispositivo del professore trovato. Riprovo..."
                 delay(2000)
-                portScanner.findProfessorDevice()
+                if (studentInfoState != null) {
+                    coroutineScope.launch { portScanner.findProfessorDevice() }
+                }
             }
             is PortScanner.ScanStatus.Error -> {
-                statusMessage = "Errore: ${(scanStatus as PortScanner.ScanStatus.Error).message}"
+                statusMessage = "Errore scansione: ${currentScanStatus.message}. Riprovo..."
+                delay(2000)
+                if (studentInfoState != null) {
+                    coroutineScope.launch { portScanner.findProfessorDevice() }
+                }
             }
-            else -> {}
         }
     }
 
-    LaunchedEffect(key1 = true) {
-        portScanner.findProfessorDevice()
+    LaunchedEffect(key1 = studentInfoState) {
+        if (studentInfoState != null && scanStatus is PortScanner.ScanStatus.NotStarted) {
+            coroutineScope.launch { portScanner.findProfessorDevice() }
+        }
     }
 
-    LaunchedEffect(key1 = connectionState) {
-        when (connectionState) {
-            ConnectionState.CONNECTED -> {
-                navController.navigate(Screens.Home.route) {
-                    popUpTo(Screens.Registration.route) { inclusive = true }
-                }
+    LaunchedEffect(key1 = connectionState, scanStatus, studentInfoState) {
+        if (connectionState == ConnectionState.CONNECTED && scanStatus is PortScanner.ScanStatus.Found) {
+            val serverIp = (scanStatus as PortScanner.ScanStatus.Found).ipAddress
+            val sId = currentStudentId.ifEmpty { "fallbackStudentId_${UUID.randomUUID().toString().take(4)}" }
+            val sName = currentStudentName.ifEmpty { "FallbackStudentName" }
+
+            navController.navigate(
+                Screens.Quiz.route
+                    .replace("{serverIp}", serverIp)
+                    .replace("{studentId}", sId)
+                    .replace("{studentName}", sName)
+            ) {
+                popUpTo(Screens.Registration.route) { inclusive = true }
             }
-            ConnectionState.CONNECTING -> {
-                statusMessage = "Connessione al dispositivo del professore"
+        } else if (connectionState == ConnectionState.ERROR) {
+            statusMessage = "Errore di connessione. Riprovo la scansione..."
+            delay(2000)
+            if (studentInfoState != null) {
+                coroutineScope.launch { portScanner.findProfessorDevice() }
             }
-            ConnectionState.ERROR -> {
-                statusMessage = "Errore di connessione. Riprovo la scansione..."
-                delay(2000)
-                portScanner.findProfessorDevice()
-            }
-            else -> {}
+        } else if (connectionState == ConnectionState.CONNECTING) {
+            statusMessage = "Connessione al dispositivo del professore..."
         }
     }
 
@@ -137,9 +172,9 @@ fun WaitingScreen(navController: NavController, studentViewModel: StudentViewMod
         Text(
             text = when (connectionState) {
                 ConnectionState.CONNECTING -> "Stabilendo la connessione..."
-                ConnectionState.CONNECTED -> "Connesso! Reindirizzamento..."
+                ConnectionState.CONNECTED -> "Connesso! Reindirizzamento al quiz..."
                 ConnectionState.ERROR -> "Errore di connessione, riprovo..."
-                else -> "Attendere mentre ti connettiamo"
+                ConnectionState.DISCONNECTED -> if (scanStatus is PortScanner.ScanStatus.Scanning || scanStatus is PortScanner.ScanStatus.NotStarted) "Attendere..." else "Disconnesso. Riprovare la scansione."
             },
             style = MaterialTheme.typography.subtitle1
         )

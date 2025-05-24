@@ -28,7 +28,7 @@ data class QuizAnswer(
     val questionId: String,
     val studentId: String,
     val studentName: String,
-    val selectedOption: String,
+    val answer: String,
     var isCorrect: Boolean? = null
 )
 

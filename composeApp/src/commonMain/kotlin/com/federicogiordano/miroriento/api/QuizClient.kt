@@ -93,6 +93,7 @@ class QuizClient(
                     send(Frame.Text(initialMessageJson))
                     println("QuizClient: Sent initial StudentConnection message: $initialMessageJson")
 
+
                     _connectionStatus.value = ConnectionStatus.Connected
                     println("QuizClient: Status set to Connected. Starting to listen for messages.")
                     listenForMessages()
@@ -181,32 +182,31 @@ class QuizClient(
                     println("QuizClient: Received QUIZ message not from professor. Sender: ${message.sender}. Ignoring.")
                 }
             }
-            "ANSWER" -> {
-                try {
-                    val answerEcho = json.decodeFromString<QuizAnswer>(message.content)
-                    println("QuizClient: Received 'ANSWER' message (confirmation/echo from server for sender '${message.sender}'): ${message.content}")
-                } catch (e: Exception) {
-                    println("QuizClient: Error parsing 'ANSWER' (echo) message: ${e.message}. Content: ${message.content}")
-                }
+            "ANSWER_RECEIVED" -> {
+                println("QuizClient: Received 'ANSWER_RECEIVED' confirmation from server. Content: ${message.content}")
             }
             "ANSWER_EVALUATED" -> {
                 println("QuizClient: Attempting to process ANSWER_EVALUATED. Content: ${message.content}")
                 try {
-                    val evaluatedAnswer = json.decodeFromString<QuizAnswer>(message.content)
-                    println("QuizClient: Successfully deserialized ANSWER_EVALUATED for Answer ID '${evaluatedAnswer.id}', Question ID '${evaluatedAnswer.questionId}'. Correct: ${evaluatedAnswer.isCorrect}, Student: '${evaluatedAnswer.studentId}'.")
+                    val rawEvaluatedAnswer = json.decodeFromString<QuizAnswer>(message.content)
+                    println("QuizClient: Successfully deserialized ANSWER_EVALUATED for Answer ID '${rawEvaluatedAnswer.id}', Question ID '${rawEvaluatedAnswer.questionId}'. Raw 'isCorrect': ${rawEvaluatedAnswer.isCorrect}, Student: '${rawEvaluatedAnswer.studentId}'.")
 
-                    if (evaluatedAnswer.studentId == this.studentId) {
-                        _submittedAnswers.update { currentAnswers ->
-                            if (currentAnswers.containsKey(evaluatedAnswer.id)) {
-                                println("QuizClient: Updating existing answer ID '${evaluatedAnswer.id}' with evaluation.")
-                            } else {
-                                println("QuizClient: Received evaluation for answer ID '${evaluatedAnswer.id}', which was not in the current local map. Adding/replacing it.")
-                            }
-                            currentAnswers + (evaluatedAnswer.id to evaluatedAnswer)
-                        }
-                        println("QuizClient: _submittedAnswers updated for answer ID '${evaluatedAnswer.id}'. New map size: ${_submittedAnswers.value.size}")
+                    val finalAnswerState = if (rawEvaluatedAnswer.isCorrect == null) {
+                        println("QuizClient: 'isCorrect' is null in evaluated answer for QID '${rawEvaluatedAnswer.questionId}'. Interpreting as 'false'.")
+                        rawEvaluatedAnswer.copy(isCorrect = false)
                     } else {
-                        println("QuizClient: Received ANSWER_EVALUATED for another student ('${evaluatedAnswer.studentId}'). Ignoring for this client ('${this.studentId}').")
+                        rawEvaluatedAnswer
+                    }
+
+                    if (finalAnswerState.studentId == this.studentId) {
+                        _submittedAnswers.update { currentAnswers ->
+                            val newAnswers = currentAnswers.toMutableMap()
+                            newAnswers[finalAnswerState.questionId] = finalAnswerState
+                            println("QuizClient: Updated submittedAnswers for questionId '${finalAnswerState.questionId}' with evaluated answer (isCorrect: ${finalAnswerState.isCorrect}).")
+                            newAnswers.toMap()
+                        }
+                    } else {
+                        println("QuizClient: Received ANSWER_EVALUATED for another student ('${finalAnswerState.studentId}'). Ignoring for this client ('${this.studentId}').")
                     }
                 } catch (e: Exception) {
                     println("QuizClient: CRITICAL - Error processing ANSWER_EVALUATED message: ${e.message}. Content: ${message.content}")
@@ -225,7 +225,7 @@ class QuizClient(
     }
 
     @OptIn(ExperimentalTime::class)
-    suspend fun sendAnswer(questionId: String, selectedOption: String) {
+    suspend fun sendAnswer(questionId: String, selectedOptionValue: String) {
         val activeQuiz = _currentQuiz.value ?: run {
             println("QuizClient: Cannot send answer, no active quiz.")
             return
@@ -244,7 +244,7 @@ class QuizClient(
             questionId = questionId,
             studentId = this.studentId,
             studentName = this.studentName,
-            selectedOption = selectedOption,
+            answer = selectedOptionValue,
             isCorrect = null
         )
 
@@ -254,11 +254,14 @@ class QuizClient(
                 content = json.encodeToString(quizAnswer),
                 sender = this.studentId
             )
-            session.send(Frame.Text(json.encodeToString(message)))
+            val messageJson = json.encodeToString(message)
+            println("QuizClient: Sending raw ANSWER message: $messageJson")
+            session.send(Frame.Text(messageJson))
+
             _submittedAnswers.update { currentAnswers ->
-                currentAnswers + (quizAnswer.id to quizAnswer)
+                currentAnswers + (quizAnswer.questionId to quizAnswer)
             }
-            println("QuizClient: Sent answer for question $questionId (Answer ID: $answerId). Optimistically updated UI.")
+            println("QuizClient: Sent answer for question $questionId (Answer ID: $answerId). Optimistically updated UI using questionId '${quizAnswer.questionId}' as key.")
         } catch (e: Exception) {
             println("QuizClient: Error sending answer for question $questionId: ${e.message}")
             _connectionStatus.value =

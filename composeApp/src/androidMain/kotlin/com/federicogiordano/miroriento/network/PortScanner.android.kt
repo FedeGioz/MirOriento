@@ -40,7 +40,6 @@ internal actual suspend fun getGatewayIpAddress(): String? {
             return null
         }
         Log.d(TAG, "Network capabilities: $networkCapabilities")
-        // Log transports
         if (networkCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) Log.d(TAG, "Active network is Wi-Fi.")
         if (networkCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) Log.d(TAG, "Active network is Cellular.")
         if (networkCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)) Log.d(TAG, "Active network is Ethernet.")

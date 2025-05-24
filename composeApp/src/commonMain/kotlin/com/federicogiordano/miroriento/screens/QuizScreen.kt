@@ -30,7 +30,7 @@ fun QuizScreen(
     }
     val connectionStatus by quizClient.connectionStatus.collectAsState()
     val currentQuiz by quizClient.currentQuiz.collectAsState()
-    val submittedAnswers by quizClient.submittedAnswers.collectAsState()
+    val submittedAnswersMap by quizClient.submittedAnswers.collectAsState()
 
     val currentSelections = remember { mutableStateMapOf<String, String>() }
     val coroutineScope = rememberCoroutineScope()
@@ -76,7 +76,7 @@ fun QuizScreen(
                         println("QuizScreen: Quiz data available. Title: ${quiz.title}. Displaying QuizContentView.")
                         QuizContentView(
                             quiz = quiz,
-                            submittedAnswers = submittedAnswers.values.toList(),
+                            submittedAnswersMap = submittedAnswersMap,
                             currentSelections = currentSelections,
                             onSelectionChange = { qId, option ->
                                 currentSelections[qId] = option
@@ -121,7 +121,7 @@ private fun ConnectionStatusView(status: ConnectionStatus) {
 @Composable
 private fun QuizContentView(
     quiz: Quiz,
-    submittedAnswers: List<QuizAnswer>,
+    submittedAnswersMap: Map<String, QuizAnswer>,
     currentSelections: Map<String, String>,
     onSelectionChange: (questionId: String, option: String) -> Unit,
     onSubmitAnswer: (questionId: String) -> Unit
@@ -135,7 +135,7 @@ private fun QuizContentView(
         items(quiz.questions) { question ->
             QuestionItemView(
                 question = question,
-                submittedAnswer = submittedAnswers.find { it.questionId == question.id },
+                submittedAnswer = submittedAnswersMap[question.id],
                 selectedOption = currentSelections[question.id],
                 onOptionSelected = { option -> onSelectionChange(question.id, option) },
                 onSubmitAnswer = { onSubmitAnswer(question.id) }
@@ -207,9 +207,9 @@ private fun QuestionItemView(
                     style = MaterialTheme.typography.body2,
                     modifier = Modifier.align(Alignment.End)
                 )
-                submittedAnswer.isCorrect?.let {
+                if (submittedAnswer.isCorrect != null || resultText == "Answer sent, awaiting evaluation...") {
                     Text(
-                        "Your answer: ${submittedAnswer.selectedOption}",
+                        "Your answer: ${submittedAnswer.answer}",
                         style = MaterialTheme.typography.caption,
                         modifier = Modifier.align(Alignment.End).padding(top = 4.dp)
                     )

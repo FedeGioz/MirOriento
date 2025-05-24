@@ -74,7 +74,6 @@ fun WaitingScreen(navController: NavController, studentViewModel: StudentViewMod
         val studentNameForConnection = studentInfoState?.name ?: "Studente Sconosciuto"
         val studentIdForConnection = studentInfoState?.name?.replace(" ", "_")?.take(20) ?: currentStudentId
 
-
         when (val currentScanStatus = scanStatus) {
             is PortScanner.ScanStatus.Found -> {
                 statusMessage = "Dispositivo del professore trovato. Connessione in corso..."
@@ -101,6 +100,12 @@ fun WaitingScreen(navController: NavController, studentViewModel: StudentViewMod
                 if (studentInfoState != null) {
                     coroutineScope.launch { portScanner.findProfessorDevice() }
                 }
+            }
+            is PortScanner.ScanStatus.NotStarted -> {
+                statusMessage = "In attesa di avviare la scansione..."
+            }
+            is PortScanner.ScanStatus.Scanning -> {
+                statusMessage = "Ricerca del dispositivo del professore in corso..."
             }
         }
     }

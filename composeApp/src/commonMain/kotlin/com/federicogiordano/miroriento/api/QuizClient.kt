@@ -2,6 +2,7 @@ package com.federicogiordano.miroriento.api
 
 import com.federicogiordano.miroriento.data.Quiz
 import com.federicogiordano.miroriento.data.QuizAnswer
+import com.federicogiordano.miroriento.data.RobotStatus
 import com.federicogiordano.miroriento.data.StudentConnection
 import com.federicogiordano.miroriento.data.WebSocketMessage
 import io.ktor.client.*
@@ -26,20 +27,18 @@ sealed class ConnectionStatus {
 }
 
 @OptIn(ExperimentalTime::class)
-class QuizClient(
-    private val studentId: String,
-    private val studentName: String
-) {
+object QuizClient {
     private val clientScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
-    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true; explicitNulls = false }
 
     private var httpClient: HttpClient? = null
     private var webSocketSession: DefaultClientWebSocketSession? = null
 
+    private var currentStudentId: String? = null
+    private var currentStudentName: String? = null
+
     private val _connectionStatus = MutableStateFlow<ConnectionStatus>(
-        ConnectionStatus.Disconnected(
-            "Not connected yet"
-        )
+        ConnectionStatus.Disconnected("Awaiting connection attempt")
     )
     val connectionStatus: StateFlow<ConnectionStatus> = _connectionStatus.asStateFlow()
 
@@ -49,8 +48,18 @@ class QuizClient(
     private val _submittedAnswers = MutableStateFlow<Map<String, QuizAnswer>>(emptyMap())
     val submittedAnswers: StateFlow<Map<String, QuizAnswer>> = _submittedAnswers.asStateFlow()
 
+    private val _robotStatus = MutableStateFlow<RobotStatus?>(null)
+    val robotStatus: StateFlow<RobotStatus?> = _robotStatus.asStateFlow()
+
     init {
-        println("QuizClient: Initialized for Student ID: '$studentId', Name: '$studentName'")
+        println("QuizClient Singleton: Initialized.")
+        initializeHttpClient()
+    }
+
+    fun configure(studentId: String, studentName: String) {
+        this.currentStudentId = studentId
+        this.currentStudentName = studentName
+        println("QuizClient: Configured with Student ID: '$currentStudentId', Name: '$currentStudentName'")
     }
 
     private fun initializeHttpClient() {
@@ -63,17 +72,24 @@ class QuizClient(
     }
 
     suspend fun connect(serverIp: String, serverPort: Int = 8080, path: String) {
+        val studentId = currentStudentId
+        val studentName = currentStudentName
+
+        if (studentId.isNullOrBlank() || studentName.isNullOrBlank()) {
+            _connectionStatus.value = ConnectionStatus.Error("Student details not configured. Call QuizClient.configure() first.")
+            println("QuizClient: Connect failed - student details not configured.")
+            return
+        }
+
         println("QuizClient: connect() called. Server: $serverIp:$serverPort$path, Student: $studentId ($studentName)")
-        if (_connectionStatus.value is ConnectionStatus.Connected || _connectionStatus.value is ConnectionStatus.Connecting) {
-            println("QuizClient: Already connected or attempting to connect. Current status: ${_connectionStatus.value}")
+        if (connectionStatus.value == ConnectionStatus.Connected || connectionStatus.value is ConnectionStatus.Connecting) {
+            println("QuizClient: Already connected or attempting to connect. Current status: ${connectionStatus.value}")
             return
         }
 
         initializeHttpClient()
         val connectUrl = "ws://$serverIp:$serverPort$path"
-        _connectionStatus.value =
-            ConnectionStatus.Connecting("Attempting to connect to $connectUrl")
-        println("QuizClient: Status set to Connecting. Resetting client state for new session.")
+        _connectionStatus.value = ConnectionStatus.Connecting("Attempting to connect to $connectUrl")
         resetClientStateForNewSession()
 
         clientScope.launch {
@@ -88,11 +104,10 @@ class QuizClient(
                     webSocketSession = this
                     println("QuizClient: WebSocket session established with $connectUrl.")
 
-                    val studentConnectionInfo = StudentConnection(this@QuizClient.studentId, this@QuizClient.studentName)
-                    val initialMessageJson = json.encodeToString(studentConnectionInfo)
+                    val studentConnectionInfo = StudentConnection(studentId, studentName)
+                    val initialMessageJson = json.encodeToString(StudentConnection.serializer(), studentConnectionInfo)
                     send(Frame.Text(initialMessageJson))
                     println("QuizClient: Sent initial StudentConnection message: $initialMessageJson")
-
 
                     _connectionStatus.value = ConnectionStatus.Connected
                     println("QuizClient: Status set to Connected. Starting to listen for messages.")
@@ -100,19 +115,21 @@ class QuizClient(
                 }
             } catch (e: CancellationException) {
                 println("QuizClient: Connection coroutine cancelled: ${e.message}")
-                _connectionStatus.value = ConnectionStatus.Disconnected("Connection cancelled")
+                if (connectionStatus.value !is ConnectionStatus.Disconnected) {
+                    _connectionStatus.value = ConnectionStatus.Disconnected("Connection cancelled by client")
+                }
             } catch (e: Exception) {
                 println("QuizClient: CRITICAL - Failed to connect or error during session with $connectUrl: ${e.message}")
                 e.printStackTrace()
-                _connectionStatus.value =
-                    ConnectionStatus.Error("Connection failed: ${e.message ?: "Unknown error"}")
+                _connectionStatus.value = ConnectionStatus.Error("Connection failed: ${e.message ?: "Unknown error"}")
             } finally {
-                println("QuizClient: WebSocket block in connect() finished for $connectUrl.")
+                println("QuizClient: WebSocket block in connect() finished for $connectUrl. Session: $webSocketSession")
+                val wasConnected = connectionStatus.value == ConnectionStatus.Connected
                 webSocketSession = null
-                if (_connectionStatus.value is ConnectionStatus.Connected) {
-                    _connectionStatus.value =
-                        ConnectionStatus.Disconnected("Session ended or listener stopped")
+                if (wasConnected) {
+                    _connectionStatus.value = ConnectionStatus.Disconnected("Session ended unexpectedly")
                 }
+                println("QuizClient: Post-connect block. Final status: ${connectionStatus.value}")
             }
         }
     }
@@ -127,35 +144,44 @@ class QuizClient(
         try {
             println("QuizClient: Starting to listen for messages from ${call.request.url}...")
             for (frame in incoming) {
-                if (frame is Frame.Text) {
-                    val text = frame.readText()
-                    println("QuizClient: Raw message received: $text")
-                    try {
-                        val webSocketMessage = json.decodeFromString<WebSocketMessage>(text)
-                        handleWebSocketMessage(webSocketMessage)
-                    } catch (e: SerializationException) {
-                        println("QuizClient: CRITICAL - Error deserializing WebSocketMessage: ${e.message}. Raw text: $text")
-                    } catch (e: Exception) {
-                        println("QuizClient: CRITICAL - Unexpected error processing frame content: ${e.message}. Raw text: $text")
+                when (frame) {
+                    is Frame.Text -> {
+                        val text = frame.readText()
+                        println("QuizClient: Raw message received: $text")
+                        try {
+                            val webSocketMessage = json.decodeFromString<WebSocketMessage>(text)
+                            handleWebSocketMessage(webSocketMessage)
+                        } catch (e: SerializationException) {
+                            println("QuizClient: CRITICAL - Error deserializing WebSocketMessage: ${e.message}. Raw text: $text")
+                        } catch (e: Exception) {
+                            println("QuizClient: CRITICAL - Unexpected error processing frame content: ${e.message}. Raw text: $text")
+                        }
                     }
-                } else if (frame is Frame.Close) {
-                    println("QuizClient: Received Close frame: ${frame.readReason()}")
+                    is Frame.Close -> {
+                        val reason = frame.readReason()
+                        println("QuizClient: Received Close frame: ${reason?.code} ${reason?.message}")
+                        if (connectionStatus.value !is ConnectionStatus.Error && connectionStatus.value !is ConnectionStatus.Disconnected) {
+                            _connectionStatus.value = ConnectionStatus.Disconnected("Connection closed by server: ${reason?.message ?: "No reason"}")
+                        }
+                        return
+                    }
+                    else -> {
+                        println("QuizClient: Received other frame type: ${frame.frameType.name}")
+                    }
                 }
             }
         } catch (e: ClosedReceiveChannelException) {
             println("QuizClient: WebSocket channel closed by remote: ${e.message}")
-            if (_connectionStatus.value !is ConnectionStatus.Disconnected && _connectionStatus.value !is ConnectionStatus.Error) {
-                _connectionStatus.value =
-                    ConnectionStatus.Disconnected("Connection closed by server")
+            if (connectionStatus.value !is ConnectionStatus.Error && connectionStatus.value !is ConnectionStatus.Disconnected) {
+                _connectionStatus.value = ConnectionStatus.Disconnected("Connection closed by server")
             }
         } catch (e: CancellationException) {
             println("QuizClient: Message listening coroutine cancelled: ${e.message}")
         } catch (e: Exception) {
             println("QuizClient: CRITICAL - Error in message listening loop: ${e.message}")
             e.printStackTrace()
-            if (_connectionStatus.value !is ConnectionStatus.Disconnected && _connectionStatus.value !is ConnectionStatus.Error) {
-                _connectionStatus.value =
-                    ConnectionStatus.Error("Error receiving messages: ${e.message}")
+            if (connectionStatus.value !is ConnectionStatus.Error && connectionStatus.value !is ConnectionStatus.Disconnected) {
+                _connectionStatus.value = ConnectionStatus.Error("Error receiving messages: ${e.message ?: "Unknown error"}")
             }
         } finally {
             println("QuizClient: Stopped listening for messages (listenForMessages finally block).")
@@ -164,6 +190,7 @@ class QuizClient(
 
     private fun handleWebSocketMessage(message: WebSocketMessage) {
         println("QuizClient: Handling message type '${message.type}' from sender '${message.sender}'.")
+        val studentId = currentStudentId
 
         when (message.type) {
             "QUIZ" -> {
@@ -175,11 +202,10 @@ class QuizClient(
                         println("QuizClient: Quiz '${quiz.title}' (ID: ${quiz.id}) received and parsed successfully. ${quiz.questions.size} questions.")
                     } catch (e: Exception) {
                         println("QuizClient: CRITICAL - Error parsing QUIZ message: ${e.message}. Content: ${message.content}")
-                        _connectionStatus.value =
-                            ConnectionStatus.Error("Failed to parse quiz data: ${e.message}")
+                        _connectionStatus.value = ConnectionStatus.Error("Failed to parse quiz data: ${e.message}")
                     }
                 } else {
-                    println("QuizClient: Received QUIZ message not from professor. Sender: ${message.sender}. Ignoring.")
+                    println("QuizClient: Received QUIZ message not from professor. Sender: '${message.sender}'. Ignoring.")
                 }
             }
             "ANSWER_RECEIVED" -> {
@@ -198,7 +224,7 @@ class QuizClient(
                         rawEvaluatedAnswer
                     }
 
-                    if (finalAnswerState.studentId == this.studentId) {
+                    if (finalAnswerState.studentId == studentId) {
                         _submittedAnswers.update { currentAnswers ->
                             val newAnswers = currentAnswers.toMutableMap()
                             newAnswers[finalAnswerState.questionId] = finalAnswerState
@@ -206,7 +232,7 @@ class QuizClient(
                             newAnswers.toMap()
                         }
                     } else {
-                        println("QuizClient: Received ANSWER_EVALUATED for another student ('${finalAnswerState.studentId}'). Ignoring for this client ('${this.studentId}').")
+                        println("QuizClient: Received ANSWER_EVALUATED for another student ('${finalAnswerState.studentId}'). Ignoring for this client ('$studentId').")
                     }
                 } catch (e: Exception) {
                     println("QuizClient: CRITICAL - Error processing ANSWER_EVALUATED message: ${e.message}. Content: ${message.content}")
@@ -215,8 +241,21 @@ class QuizClient(
             "SESSION_ENDED" -> {
                 println("QuizClient: Received SESSION_ENDED message from sender '${message.sender}'. Content: ${message.content}")
                 _currentQuiz.value = null
-                _connectionStatus.value =
-                    ConnectionStatus.Disconnected("Session ended by professor: ${message.content}")
+                _connectionStatus.value = ConnectionStatus.Disconnected("Session ended by professor: ${message.content}")
+            }
+            "ROBOT_STATUS" -> {
+                if (message.sender == "server") {
+                    println("QuizClient: Received ROBOT_STATUS from server. Attempting to parse. Content: ${message.content}")
+                    try {
+                        val parsedRobotStatus = json.decodeFromString<RobotStatus>(message.content)
+                        _robotStatus.value = parsedRobotStatus
+                        println("QuizClient: ROBOT_STATUS parsed successfully. Robot: '${parsedRobotStatus.robotName ?: "N/A"}', Battery: ${parsedRobotStatus.batteryPercentage}%.")
+                    } catch (e: Exception) {
+                        println("QuizClient: CRITICAL - Error parsing ROBOT_STATUS message: ${e.message}. Content: ${message.content}")
+                    }
+                } else {
+                    println("QuizClient: Received ROBOT_STATUS message not from server. Sender: '${message.sender}'. Ignoring.")
+                }
             }
             else -> {
                 println("QuizClient: Received unknown message type: '${message.type}'. Sender: '${message.sender}'. Content: ${message.content}")
@@ -224,78 +263,84 @@ class QuizClient(
         }
     }
 
-    @OptIn(ExperimentalTime::class)
     suspend fun sendAnswer(questionId: String, selectedOptionValue: String) {
-        val activeQuiz = _currentQuiz.value ?: run {
+        val studentId = currentStudentId
+        val studentName = currentStudentName
+        val activeQuiz = _currentQuiz.value
+
+        if (studentId.isNullOrBlank() || studentName.isNullOrBlank()) {
+            println("QuizClient: Cannot send answer, student details not configured.")
+            return
+        }
+        if (activeQuiz == null) {
             println("QuizClient: Cannot send answer, no active quiz.")
             return
         }
-        val session = webSocketSession ?: run {
-            println("QuizClient: Cannot send answer, not connected.")
+        val session = webSocketSession
+        if (session == null || connectionStatus.value != ConnectionStatus.Connected) {
+            println("QuizClient: Cannot send answer, not connected. Status: ${connectionStatus.value}")
             _connectionStatus.value = ConnectionStatus.Error("Not connected. Cannot send answer.")
             return
         }
 
-        val answerId = "ans_${this.studentId}_${questionId}_${Clock.System.now().toEpochMilliseconds()}_${Random.nextInt(10000)}"
-
+        val answerId = "ans_${studentId}_${questionId}_${Clock.System.now().toEpochMilliseconds()}_${Random.nextInt(10000)}"
         val quizAnswer = QuizAnswer(
             id = answerId,
             quizId = activeQuiz.id,
             questionId = questionId,
-            studentId = this.studentId,
-            studentName = this.studentName,
+            studentId = studentId,
+            studentName = studentName,
             answer = selectedOptionValue,
             isCorrect = null
         )
 
         try {
-            val message = WebSocketMessage(
+            val wsMessage = WebSocketMessage(
                 type = "ANSWER",
-                content = json.encodeToString(quizAnswer),
-                sender = this.studentId
+                content = json.encodeToString(QuizAnswer.serializer(), quizAnswer),
+                sender = studentId
             )
-            val messageJson = json.encodeToString(message)
-            println("QuizClient: Sending raw ANSWER message: $messageJson")
+            val messageJson = json.encodeToString(WebSocketMessage.serializer(), wsMessage)
+            println("QuizClient: Sending ANSWER message: $messageJson")
             session.send(Frame.Text(messageJson))
 
             _submittedAnswers.update { currentAnswers ->
-                currentAnswers + (quizAnswer.questionId to quizAnswer)
+                currentAnswers + (quizAnswer.questionId to quizAnswer.copy(isCorrect = null))
             }
-            println("QuizClient: Sent answer for question $questionId (Answer ID: $answerId). Optimistically updated UI using questionId '${quizAnswer.questionId}' as key.")
+            println("QuizClient: Sent answer for question $questionId (Answer ID: $answerId). Optimistically updated UI.")
         } catch (e: Exception) {
             println("QuizClient: Error sending answer for question $questionId: ${e.message}")
-            _connectionStatus.value =
-                ConnectionStatus.Error("Failed to send answer: ${e.message ?: "Unknown error"}")
+            _connectionStatus.value = ConnectionStatus.Error("Failed to send answer: ${e.message ?: "Unknown error"}")
         }
     }
 
-    suspend fun disconnect() {
-        println("QuizClient: disconnect() called. Current status: ${_connectionStatus.value}")
-        if (_connectionStatus.value is ConnectionStatus.Disconnected && webSocketSession == null) {
+    suspend fun disconnect(reason: String = "User initiated disconnect") {
+        println("QuizClient: disconnect() called. Reason: $reason. Current status: ${connectionStatus.value}")
+        val sessionToClose = webSocketSession
+        webSocketSession = null
+
+        if (connectionStatus.value is ConnectionStatus.Disconnected && sessionToClose == null) {
             println("QuizClient: Already disconnected and session is null.")
             return
         }
-        val previousStatus = _connectionStatus.value
-        _connectionStatus.value = ConnectionStatus.Disconnected("User initiated disconnect")
+        _connectionStatus.value = ConnectionStatus.Disconnected(reason)
         try {
-            webSocketSession?.close(CloseReason(CloseReason.Codes.NORMAL, "Client initiated disconnect"))
+            sessionToClose?.close(CloseReason(CloseReason.Codes.NORMAL, reason))
             println("QuizClient: WebSocket session close initiated.")
         } catch (e: Exception) {
             println("QuizClient: Error during WebSocket session close: ${e.message}")
         }
-        webSocketSession = null
-        println("QuizClient: Disconnected. Previous status: $previousStatus. Session is now null.")
+        println("QuizClient: Disconnected. Session is now definitively null.")
     }
 
     fun cleanup() {
-        println("QuizClient: cleanup() called for Student ID '$studentId'. Cancelling scope and closing HTTP client.")
+        println("QuizClient Singleton: cleanup() called.")
         clientScope.launch {
-            disconnect()
+            disconnect("Application cleanup")
         }
-        clientScope.cancel("QuizClient cleanup initiated")
-
+        clientScope.cancel("QuizClient cleanup initiated by app")
         httpClient?.close()
         httpClient = null
-        println("QuizClient: HTTP client closed. Resources cleaned up for Student ID '$studentId'.")
+        println("QuizClient Singleton: HTTP client closed. Resources cleaned up.")
     }
 }

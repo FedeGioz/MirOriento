@@ -10,7 +10,7 @@ import com.federicogiordano.miroriento.network.ApplicationContextProvider
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        ApplicationContextProvider.applicationContext = applicationContext
+        ApplicationContextProvider.applicationContext = this
         setContent {
             App()
         }

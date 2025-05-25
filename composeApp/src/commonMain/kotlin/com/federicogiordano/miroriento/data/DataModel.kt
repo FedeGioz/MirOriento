@@ -21,7 +21,8 @@ data class StudentInfo(
 @Serializable
 data class StudentConnection(
     val id: String,
-    val name: String
+    val name: String,
+    val hasJoystickPermission: Boolean = false
 )
 
 @Serializable
@@ -76,19 +77,60 @@ data class RobotVelocity(
 
 @Serializable
 data class RobotStatus(
-    @SerialName("mode_id") val modeId: Int,
+    @SerialName("mode_id") val modeId: Int = -1,
     @SerialName("mission_queue_id") val missionQueueId: String? = null,
-    @SerialName("robot_name") val robotName: String?,
-    @SerialName("uptime") val uptime: Long,
-    @SerialName("errors") val errors: List<String>,
-    @SerialName("batteryPercentage") val batteryPercentage: Float,
-    @SerialName("mapId") val mapId: String?,
-    @SerialName("mission_text") val missionText: String?,
-    @SerialName("state_id") val stateId: Int,
-    @SerialName("stateText") val stateText: String?,
-    @SerialName("velocity") val velocity: RobotVelocity,
-    @SerialName("robot_model") val robotModel: String?,
-    @SerialName("mode_text") val modeText: String?,
-    @SerialName("batteryTimeRemaining") val batteryTimeRemaining: Long?,
-    @SerialName("position") val position: RobotPosition
+    @SerialName("robot_name") val robotName: String = "",
+    @SerialName("uptime") val uptime: Long = -1,
+    @SerialName("errors") val errors: List<String> = emptyList(),
+    @SerialName("battery_percentage") val battery_percentage: Float = 0f,
+    @SerialName("map_id") val mapId: String = "",
+    @SerialName("mission_text") val missionText: String = "",
+    @SerialName("state_id") val stateId: Int = -1,
+    @SerialName("state_text") val stateText: String = "",
+    @SerialName("velocity") val velocity: Velocity = Velocity(),
+    @SerialName("robot_model") val robotModel: String = "",
+    @SerialName("mode_text") val modeText: String = "",
+    @SerialName("battery_time_remaining") val batteryTimeRemaining: Long = -1,
+    @SerialName("position") val position: Position = Position()
+)
+
+@Serializable
+data class Velocity(
+    @SerialName("linear") val linear: Float? = null,
+    @SerialName("angular") val angular: Float? = null
+)
+
+@Serializable
+data class Position(
+    @SerialName("x") val x: Float? = null,
+    @SerialName("y") val y: Float? = null,
+    @SerialName("orientation") val orientation: Float? = null
+)
+
+@Serializable
+data class VelocityMessage(
+    val joystick_token: String,
+    val speed_command: SpeedCommand
+)
+
+@Serializable
+data class SpeedCommand(
+    val linear: Vector3,
+    val angular: Vector3
+)
+
+@Serializable
+data class Vector3(
+    val x: Float = 0f,
+    val y: Float = 0f,
+    val z: Float = 0f
+)
+
+@Serializable
+data class VelocityCommand(
+    @SerialName("op") val op: String,
+    @SerialName("id") val id: String,
+    @SerialName("topic") val topic: String,
+    @SerialName("msg") val msg: VelocityMessage,
+    @SerialName("latch") val latch: Boolean = false
 )

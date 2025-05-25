@@ -3,7 +3,11 @@ package com.federicogiordano.miroriento.api
 import com.federicogiordano.miroriento.data.Quiz
 import com.federicogiordano.miroriento.data.QuizAnswer
 import com.federicogiordano.miroriento.data.RobotStatus
+import com.federicogiordano.miroriento.data.SpeedCommand
 import com.federicogiordano.miroriento.data.StudentConnection
+import com.federicogiordano.miroriento.data.Vector3
+import com.federicogiordano.miroriento.data.VelocityCommand
+import com.federicogiordano.miroriento.data.VelocityMessage
 import com.federicogiordano.miroriento.data.WebSocketMessage
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
@@ -51,6 +55,13 @@ object QuizClient {
     private val _robotStatus = MutableStateFlow<RobotStatus?>(null)
     val robotStatus: StateFlow<RobotStatus?> = _robotStatus.asStateFlow()
 
+    private val _showJoystick = MutableStateFlow(false)
+    val showJoystick: StateFlow<Boolean> = _showJoystick.asStateFlow()
+
+    private const val VELOCITY_COMMAND_OP = "publish"
+    private const val VELOCITY_COMMAND_TOPIC = "/cmd_vel_joystick"
+    private const val DEFAULT_JOYSTICK_TOKEN = "miroriento_joystick_user"
+
     init {
         println("QuizClient Singleton: Initialized.")
         initializeHttpClient()
@@ -60,6 +71,7 @@ object QuizClient {
         this.currentStudentId = studentId
         this.currentStudentName = studentName
         println("QuizClient: Configured with Student ID: '$currentStudentId', Name: '$currentStudentName'")
+        _showJoystick.value = false
     }
 
     private fun initializeHttpClient() {
@@ -94,21 +106,15 @@ object QuizClient {
 
         clientScope.launch {
             try {
-                println("QuizClient: Attempting WebSocket connection to $connectUrl")
                 httpClient!!.webSocket(
-                    method = HttpMethod.Get,
-                    host = serverIp,
-                    port = serverPort,
-                    path = path
+                    method = HttpMethod.Get, host = serverIp, port = serverPort, path = path
                 ) {
                     webSocketSession = this
                     println("QuizClient: WebSocket session established with $connectUrl.")
-
                     val studentConnectionInfo = StudentConnection(studentId, studentName)
                     val initialMessageJson = json.encodeToString(StudentConnection.serializer(), studentConnectionInfo)
                     send(Frame.Text(initialMessageJson))
                     println("QuizClient: Sent initial StudentConnection message: $initialMessageJson")
-
                     _connectionStatus.value = ConnectionStatus.Connected
                     println("QuizClient: Status set to Connected. Starting to listen for messages.")
                     listenForMessages()
@@ -138,6 +144,7 @@ object QuizClient {
         println("QuizClient: resetClientStateForNewSession called.")
         _currentQuiz.value = null
         _submittedAnswers.value = emptyMap()
+        _showJoystick.value = false
     }
 
     private suspend fun DefaultClientWebSocketSession.listenForMessages() {
@@ -160,6 +167,7 @@ object QuizClient {
                     is Frame.Close -> {
                         val reason = frame.readReason()
                         println("QuizClient: Received Close frame: ${reason?.code} ${reason?.message}")
+                        _showJoystick.value = false
                         if (connectionStatus.value !is ConnectionStatus.Error && connectionStatus.value !is ConnectionStatus.Disconnected) {
                             _connectionStatus.value = ConnectionStatus.Disconnected("Connection closed by server: ${reason?.message ?: "No reason"}")
                         }
@@ -239,9 +247,26 @@ object QuizClient {
                 }
             }
             "SESSION_ENDED" -> {
-                println("QuizClient: Received SESSION_ENDED message from sender '${message.sender}'. Content: ${message.content}")
+                println("QuizClient: Received SESSION_ENDED from '${message.sender}'. Content: ${message.content}")
                 _currentQuiz.value = null
-                _connectionStatus.value = ConnectionStatus.Disconnected("Session ended by professor: ${message.content}")
+                _connectionStatus.value = ConnectionStatus.Disconnected("Session ended by server: ${message.content}")
+                _showJoystick.value = false
+            }
+            "ALLOW_JOYSTICK" -> {
+                if (message.sender == "professor") {
+                    println("QuizClient: ALLOW_JOYSTICK message received. Enabling joystick.")
+                    _showJoystick.value = true
+                } else {
+                    println("QuizClient: ALLOW_JOYSTICK message not from professor. Sender: '${message.sender}'. Ignoring.")
+                }
+            }
+            "DISABLE_JOYSTICK" -> {
+                if (message.sender == "professor") {
+                    println("QuizClient: DISABLE_JOYSTICK message received. Disabling joystick.")
+                    _showJoystick.value = false
+                } else {
+                    println("QuizClient: DISABLE_JOYSTICK message not from professor. Sender: '${message.sender}'. Ignoring.")
+                }
             }
             "ROBOT_STATUS" -> {
                 if (message.sender == "server") {
@@ -249,7 +274,7 @@ object QuizClient {
                     try {
                         val parsedRobotStatus = json.decodeFromString<RobotStatus>(message.content)
                         _robotStatus.value = parsedRobotStatus
-                        println("QuizClient: ROBOT_STATUS parsed successfully. Robot: '${parsedRobotStatus.robotName ?: "N/A"}', Battery: ${parsedRobotStatus.batteryPercentage}%.")
+                        println("QuizClient: ROBOT_STATUS parsed successfully. Robot: '${parsedRobotStatus.robotName ?: "N/A"}', Battery: ${parsedRobotStatus.battery_percentage}%.")
                     } catch (e: Exception) {
                         println("QuizClient: CRITICAL - Error parsing ROBOT_STATUS message: ${e.message}. Content: ${message.content}")
                     }
@@ -314,6 +339,51 @@ object QuizClient {
         }
     }
 
+    suspend fun sendVelocity(linearControl: Float, angularControl: Float) {
+        val studentId = currentStudentId
+        if (studentId.isNullOrBlank()) {
+            println("QuizClient: Cannot send velocity, studentId not configured.")
+            return
+        }
+        val session = webSocketSession
+        if (session == null || connectionStatus.value != ConnectionStatus.Connected) {
+            println("QuizClient: Cannot send velocity, not connected. Status: ${connectionStatus.value}")
+            return
+        }
+
+        try {
+            val linearVec = Vector3(x = linearControl, y = 0f, z = 0f)
+            val angularVec = Vector3(x = 0f, y = 0f, z = angularControl)
+
+            val speedCmd = SpeedCommand(linear = linearVec, angular = angularVec)
+
+            val token = currentStudentId ?: DEFAULT_JOYSTICK_TOKEN
+            val velocityMsg = VelocityMessage(joystick_token = token, speed_command = speedCmd)
+
+            val commandId = "vel_cmd_${Clock.System.now().toEpochMilliseconds()}_${Random.nextInt(1000)}"
+            val velocityCommand = VelocityCommand(
+                op = VELOCITY_COMMAND_OP,
+                id = commandId,
+                topic = VELOCITY_COMMAND_TOPIC,
+                msg = velocityMsg,
+                latch = false
+            )
+
+            val wsMessage = WebSocketMessage(
+                type = "ROBOT_CONTROL_VELOCITY",
+                content = json.encodeToString(VelocityCommand.serializer(), velocityCommand),
+                sender = studentId
+            )
+            val messageJson = json.encodeToString(WebSocketMessage.serializer(), wsMessage)
+
+            session.send(Frame.Text(messageJson))
+
+        } catch (e: Exception) {
+            println("QuizClient: Error sending velocity: ${e.message}")
+            e.printStackTrace()
+        }
+    }
+
     suspend fun disconnect(reason: String = "User initiated disconnect") {
         println("QuizClient: disconnect() called. Reason: $reason. Current status: ${connectionStatus.value}")
         val sessionToClose = webSocketSession
@@ -321,9 +391,11 @@ object QuizClient {
 
         if (connectionStatus.value is ConnectionStatus.Disconnected && sessionToClose == null) {
             println("QuizClient: Already disconnected and session is null.")
+            _showJoystick.value = false
             return
         }
         _connectionStatus.value = ConnectionStatus.Disconnected(reason)
+        _showJoystick.value = false
         try {
             sessionToClose?.close(CloseReason(CloseReason.Codes.NORMAL, reason))
             println("QuizClient: WebSocket session close initiated.")

@@ -214,6 +214,6 @@ private fun ConnectionStatusDisplayQuiz(status: ConnectionStatus) {
 
 @Composable
 private fun RobotBatteryDisplayQuiz(robotStatus: RobotStatus?) {
-    val text = robotStatus?.let { "Robot: ${it.batteryPercentage}%" } ?: "Robot: N/A"
+    val text = robotStatus?.let { "Robot: ${it.battery_percentage}%" } ?: "Robot: N/A"
     Text(text, style = MaterialTheme.typography.caption, modifier = Modifier.padding(bottom = 8.dp))
 }

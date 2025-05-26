@@ -58,6 +58,9 @@ object QuizClient {
     private val _showJoystick = MutableStateFlow(false)
     val showJoystick: StateFlow<Boolean> = _showJoystick.asStateFlow()
 
+    private val _currentMapBase64 = MutableStateFlow<String?>(null)
+    val currentMapBase64: StateFlow<String?> = _currentMapBase64.asStateFlow()
+
     private const val VELOCITY_COMMAND_OP = "publish"
     private const val VELOCITY_COMMAND_TOPIC = "/cmd_vel_joystick"
     private const val DEFAULT_JOYSTICK_TOKEN = "miroriento_joystick_user"
@@ -71,7 +74,12 @@ object QuizClient {
         this.currentStudentId = studentId
         this.currentStudentName = studentName
         println("QuizClient: Configured with Student ID: '$currentStudentId', Name: '$currentStudentName'")
+
         _showJoystick.value = false
+        _currentQuiz.value = null
+        _submittedAnswers.value = emptyMap()
+        _robotStatus.value = null
+        _currentMapBase64.value = null
     }
 
     private fun initializeHttpClient() {
@@ -131,10 +139,14 @@ object QuizClient {
             } finally {
                 println("QuizClient: WebSocket block in connect() finished for $connectUrl. Session: $webSocketSession")
                 val wasConnected = connectionStatus.value == ConnectionStatus.Connected
+                val wasConnecting = connectionStatus.value is ConnectionStatus.Connecting
                 webSocketSession = null
-                if (wasConnected) {
-                    _connectionStatus.value = ConnectionStatus.Disconnected("Session ended unexpectedly")
+                if (wasConnected || wasConnecting) {
+                    if (_connectionStatus.value !is ConnectionStatus.Error) {
+                        _connectionStatus.value = ConnectionStatus.Disconnected("Session ended")
+                    }
                 }
+                _currentMapBase64.value = null
                 println("QuizClient: Post-connect block. Final status: ${connectionStatus.value}")
             }
         }
@@ -145,6 +157,8 @@ object QuizClient {
         _currentQuiz.value = null
         _submittedAnswers.value = emptyMap()
         _showJoystick.value = false
+        _currentMapBase64.value = null
+        _robotStatus.value = null
     }
 
     private suspend fun DefaultClientWebSocketSession.listenForMessages() {
@@ -168,6 +182,7 @@ object QuizClient {
                         val reason = frame.readReason()
                         println("QuizClient: Received Close frame: ${reason?.code} ${reason?.message}")
                         _showJoystick.value = false
+                        _currentMapBase64.value = null
                         if (connectionStatus.value !is ConnectionStatus.Error && connectionStatus.value !is ConnectionStatus.Disconnected) {
                             _connectionStatus.value = ConnectionStatus.Disconnected("Connection closed by server: ${reason?.message ?: "No reason"}")
                         }
@@ -193,6 +208,10 @@ object QuizClient {
             }
         } finally {
             println("QuizClient: Stopped listening for messages (listenForMessages finally block).")
+            if (connectionStatus.value == ConnectionStatus.Connected) {
+                _connectionStatus.value = ConnectionStatus.Disconnected("Message listener stopped unexpectedly")
+            }
+            _currentMapBase64.value = null
         }
     }
 
@@ -251,6 +270,7 @@ object QuizClient {
                 _currentQuiz.value = null
                 _connectionStatus.value = ConnectionStatus.Disconnected("Session ended by server: ${message.content}")
                 _showJoystick.value = false
+                _currentMapBase64.value = null
             }
             "ALLOW_JOYSTICK" -> {
                 if (message.sender == "professor") {
@@ -269,17 +289,25 @@ object QuizClient {
                 }
             }
             "ROBOT_STATUS" -> {
-                if (message.sender == "server") {
-                    println("QuizClient: Received ROBOT_STATUS from server. Attempting to parse. Content: ${message.content}")
+                if (message.sender == "server" || message.sender == "professor") {
+                    println("QuizClient: Received ROBOT_STATUS from '${message.sender}'. Attempting to parse. Content: ${message.content}")
                     try {
                         val parsedRobotStatus = json.decodeFromString<RobotStatus>(message.content)
                         _robotStatus.value = parsedRobotStatus
-                        println("QuizClient: ROBOT_STATUS parsed successfully. Robot: '${parsedRobotStatus.robotName ?: "N/A"}', Battery: ${parsedRobotStatus.battery_percentage}%.")
+                        println("QuizClient: ROBOT_STATUS parsed successfully. Robot: '${parsedRobotStatus.robotName}', Battery: ${parsedRobotStatus.battery_percentage}%.")
                     } catch (e: Exception) {
                         println("QuizClient: CRITICAL - Error parsing ROBOT_STATUS message: ${e.message}. Content: ${message.content}")
                     }
                 } else {
-                    println("QuizClient: Received ROBOT_STATUS message not from server. Sender: '${message.sender}'. Ignoring.")
+                    println("QuizClient: Received ROBOT_STATUS message not from server or professor. Sender: '${message.sender}'. Ignoring.")
+                }
+            }
+            "MAP_UPDATE" -> {
+                if (message.sender == "server" || message.sender == "professor") {
+                    println("QuizClient: MAP_UPDATE message received from '${message.sender}'. Content length: ${message.content.length}")
+                    _currentMapBase64.value = message.content
+                } else {
+                    println("QuizClient: Received MAP_UPDATE message not from a recognized sender ('${message.sender}'). Ignoring.")
                 }
             }
             else -> {
@@ -304,7 +332,6 @@ object QuizClient {
         val session = webSocketSession
         if (session == null || connectionStatus.value != ConnectionStatus.Connected) {
             println("QuizClient: Cannot send answer, not connected. Status: ${connectionStatus.value}")
-            _connectionStatus.value = ConnectionStatus.Error("Not connected. Cannot send answer.")
             return
         }
 
@@ -335,7 +362,6 @@ object QuizClient {
             println("QuizClient: Sent answer for question $questionId (Answer ID: $answerId). Optimistically updated UI.")
         } catch (e: Exception) {
             println("QuizClient: Error sending answer for question $questionId: ${e.message}")
-            _connectionStatus.value = ConnectionStatus.Error("Failed to send answer: ${e.message ?: "Unknown error"}")
         }
     }
 
@@ -389,28 +415,29 @@ object QuizClient {
         val sessionToClose = webSocketSession
         webSocketSession = null
 
-        if (connectionStatus.value is ConnectionStatus.Disconnected && sessionToClose == null) {
-            println("QuizClient: Already disconnected and session is null.")
-            _showJoystick.value = false
-            return
-        }
         _connectionStatus.value = ConnectionStatus.Disconnected(reason)
+
+        _currentQuiz.value = null
+        _submittedAnswers.value = emptyMap()
         _showJoystick.value = false
+        _currentMapBase64.value = null
+        _robotStatus.value = null
+
         try {
             sessionToClose?.close(CloseReason(CloseReason.Codes.NORMAL, reason))
-            println("QuizClient: WebSocket session close initiated.")
+            println("QuizClient: WebSocket session close initiated for $sessionToClose.")
         } catch (e: Exception) {
             println("QuizClient: Error during WebSocket session close: ${e.message}")
         }
-        println("QuizClient: Disconnected. Session is now definitively null.")
+        println("QuizClient: Disconnected. Session is now definitively null. Status: ${_connectionStatus.value}")
     }
+
 
     fun cleanup() {
         println("QuizClient Singleton: cleanup() called.")
         clientScope.launch {
             disconnect("Application cleanup")
         }
-        clientScope.cancel("QuizClient cleanup initiated by app")
         httpClient?.close()
         httpClient = null
         println("QuizClient Singleton: HTTP client closed. Resources cleaned up.")

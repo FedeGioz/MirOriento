@@ -5,7 +5,6 @@ import io.ktor.network.sockets.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import io.ktor.utils.io.errors.IOException
 
 internal expect suspend fun getGatewayIpAddress(): String?
 
@@ -70,7 +69,7 @@ class PortScanner {
                     log("Connesso a $ip:$port con successo ✓")
                     socket.close()
                     true
-                } catch (e: IOException) {
+                } catch (e: kotlinx.io.IOException) {
                     val errorMessage = e.message?.lowercase() ?: ""
                     when {
                         errorMessage.contains("connection refused") ->

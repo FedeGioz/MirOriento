@@ -63,6 +63,35 @@ data class QuizAnswer(
 )
 
 @Serializable
+data class PersistedQuizAnswer(
+    val id: String,
+    val quizId: String,
+    val questionId: String,
+    val questionText: String,
+    val studentId: String,
+    val studentName: String,
+    val answer: String,
+    val options: List<String>,
+    val correctAnswerText: String?,
+    var isCorrect: Boolean? = null
+)
+
+@Serializable
+data class VisitRecord(
+    val studentId: String,
+    val visitDate: String,
+    val quizTitle: String?,
+    val answers: MutableList<PersistedQuizAnswer> = mutableListOf()
+)
+
+@Serializable
+data class StudentPersistedData(
+    val studentInfo: StudentInfo,
+    val registrationTimestamp: Long,
+    val visits: MutableList<VisitRecord> = mutableListOf()
+)
+
+@Serializable
 data class RobotPosition(
     @SerialName("x") val x: Float? = null,
     @SerialName("y") val y: Float? = null,

@@ -12,7 +12,7 @@ class PortScanner {
     private val _scanStatus = MutableStateFlow<ScanStatus>(ScanStatus.NotStarted)
     val scanStatus: StateFlow<ScanStatus> = _scanStatus
 
-    private val _scanLog = MutableStateFlow<String>("Avvio scansione...")
+    private val _scanLog = MutableStateFlow("Avvio scansione...")
     val scanLog: StateFlow<String> = _scanLog
 
     private fun log(message: String) {
@@ -97,9 +97,9 @@ class PortScanner {
     }
 
     sealed class ScanStatus {
-        object NotStarted : ScanStatus()
-        object Scanning : ScanStatus()
-        object NotFound : ScanStatus()
+        data object NotStarted : ScanStatus()
+        data object Scanning : ScanStatus()
+        data object NotFound : ScanStatus()
         data class Found(val ipAddress: String) : ScanStatus()
         data class Error(val message: String) : ScanStatus()
     }

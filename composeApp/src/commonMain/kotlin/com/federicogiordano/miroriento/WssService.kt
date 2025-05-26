@@ -1,17 +1,30 @@
 package com.federicogiordano.miroriento
 
-import io.ktor.client.*
+import io.ktor.client.HttpClient
 import io.ktor.client.plugins.HttpTimeout
-import io.ktor.client.plugins.websocket.*
+import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
+import io.ktor.client.plugins.websocket.WebSockets
+import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.client.request.parameter
-import io.ktor.http.*
-import io.ktor.websocket.*
-import kotlinx.coroutines.*
+import io.ktor.http.HttpMethod
+import io.ktor.websocket.CloseReason
+import io.ktor.websocket.Frame
+import io.ktor.websocket.close
+import io.ktor.websocket.readText
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.ClosedReceiveChannelException
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import kotlin.time.Duration.Companion.seconds
 
 @Serializable
 data class StudentConnection(
@@ -56,16 +69,14 @@ class WebSocketClient(
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
     private val _errorDetails = MutableStateFlow<String?>(null)
-    val errorDetails: StateFlow<String?> = _errorDetails.asStateFlow()
 
     private val _receivedMessages = MutableSharedFlow<WebSocketMessage>()
-    val receivedMessages: SharedFlow<WebSocketMessage> = _receivedMessages.asSharedFlow()
 
     private var webSocketSession: DefaultClientWebSocketSession? = null
     private var connectionJob: Job? = null
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-    suspend fun connect() {
+    fun connect() {
         if (_connectionState.value == ConnectionState.CONNECTED || _connectionState.value == ConnectionState.CONNECTING) {
             println("WebSocketClient: Already connected or connecting.")
             return
@@ -163,7 +174,7 @@ class WebSocketClient(
         }
     }
 
-    suspend fun sendMessage(message: WebSocketMessage) {
+    private suspend fun sendMessage(message: WebSocketMessage) {
         val session = webSocketSession
         if (session != null && _connectionState.value == ConnectionState.CONNECTED) {
             try {
@@ -189,8 +200,4 @@ class WebSocketClient(
         println("WebSocketClient: Connection parameters updated. New URL: $serverUrl, Port: $port, Student: ${studentInfo.name}")
     }
 
-    fun clearError() {
-        _errorMessage.value = null
-        _errorDetails.value = null
-    }
 }

@@ -1,5 +1,6 @@
 package com.federicogiordano.miroriento.api
 
+import com.federicogiordano.miroriento.data.PersistenceService
 import com.federicogiordano.miroriento.data.Quiz
 import com.federicogiordano.miroriento.data.QuizAnswer
 import com.federicogiordano.miroriento.data.RobotStatus
@@ -26,7 +27,7 @@ import kotlin.time.ExperimentalTime
 sealed class ConnectionStatus {
     data class Disconnected(val reason: String) : ConnectionStatus()
     data class Connecting(val message: String) : ConnectionStatus()
-    object Connected : ConnectionStatus()
+    data object Connected : ConnectionStatus()
     data class Error(val message: String) : ConnectionStatus()
 }
 
@@ -91,7 +92,7 @@ object QuizClient {
         }
     }
 
-    suspend fun connect(serverIp: String, serverPort: Int = 8080, path: String) {
+    fun connect(serverIp: String, serverPort: Int = 8080, path: String) {
         val studentId = currentStudentId
         val studentName = currentStudentName
 
@@ -217,7 +218,7 @@ object QuizClient {
 
     private fun handleWebSocketMessage(message: WebSocketMessage) {
         println("QuizClient: Handling message type '${message.type}' from sender '${message.sender}'.")
-        val studentId = currentStudentId
+        val activeStudentId = currentStudentId
 
         when (message.type) {
             "QUIZ" -> {
@@ -241,25 +242,23 @@ object QuizClient {
             "ANSWER_EVALUATED" -> {
                 println("QuizClient: Attempting to process ANSWER_EVALUATED. Content: ${message.content}")
                 try {
-                    val rawEvaluatedAnswer = json.decodeFromString<QuizAnswer>(message.content)
-                    println("QuizClient: Successfully deserialized ANSWER_EVALUATED for Answer ID '${rawEvaluatedAnswer.id}', Question ID '${rawEvaluatedAnswer.questionId}'. Raw 'isCorrect': ${rawEvaluatedAnswer.isCorrect}, Student: '${rawEvaluatedAnswer.studentId}'.")
+                    val evaluatedLiveAnswer = json.decodeFromString<QuizAnswer>(message.content)
 
-                    val finalAnswerState = if (rawEvaluatedAnswer.isCorrect == null) {
-                        println("QuizClient: 'isCorrect' is null in evaluated answer for QID '${rawEvaluatedAnswer.questionId}'. Interpreting as 'false'.")
-                        rawEvaluatedAnswer.copy(isCorrect = false)
+                    val finalAnswerState = if (evaluatedLiveAnswer.isCorrect == null) {
+                        println("QuizClient: 'isCorrect' is null in evaluated answer for QID '${evaluatedLiveAnswer.questionId}'. Interpreting as 'false'.")
+                        evaluatedLiveAnswer.copy(isCorrect = false)
                     } else {
-                        rawEvaluatedAnswer
+                        evaluatedLiveAnswer
                     }
 
-                    if (finalAnswerState.studentId == studentId) {
+                    if (finalAnswerState.studentId == activeStudentId && activeStudentId != null) {
                         _submittedAnswers.update { currentAnswers ->
-                            val newAnswers = currentAnswers.toMutableMap()
-                            newAnswers[finalAnswerState.questionId] = finalAnswerState
-                            println("QuizClient: Updated submittedAnswers for questionId '${finalAnswerState.questionId}' with evaluated answer (isCorrect: ${finalAnswerState.isCorrect}).")
-                            newAnswers.toMap()
+                            currentAnswers + (finalAnswerState.questionId to finalAnswerState)
                         }
+                        PersistenceService.updateAnswerInTodaysVisit(activeStudentId, finalAnswerState)
+                        println("QuizClient: Updated UI and persisted evaluated answer for QID '${finalAnswerState.questionId}'.")
                     } else {
-                        println("QuizClient: Received ANSWER_EVALUATED for another student ('${finalAnswerState.studentId}'). Ignoring for this client ('$studentId').")
+                        println("QuizClient: Received ANSWER_EVALUATED for student '${finalAnswerState.studentId}', but current client is '$activeStudentId'. Ignoring for persistence/UI update here.")
                     }
                 } catch (e: Exception) {
                     println("QuizClient: CRITICAL - Error processing ANSWER_EVALUATED message: ${e.message}. Content: ${message.content}")
@@ -321,12 +320,8 @@ object QuizClient {
         val studentName = currentStudentName
         val activeQuiz = _currentQuiz.value
 
-        if (studentId.isNullOrBlank() || studentName.isNullOrBlank()) {
-            println("QuizClient: Cannot send answer, student details not configured.")
-            return
-        }
-        if (activeQuiz == null) {
-            println("QuizClient: Cannot send answer, no active quiz.")
+        if (studentId.isNullOrBlank() || studentName.isNullOrBlank() || activeQuiz == null) {
+            println("QuizClient: Cannot send answer, student details not configured or no active quiz.")
             return
         }
         val session = webSocketSession
@@ -335,8 +330,14 @@ object QuizClient {
             return
         }
 
-        val answerId = "ans_${studentId}_${questionId}_${Clock.System.now().toEpochMilliseconds()}_${Random.nextInt(10000)}"
-        val quizAnswer = QuizAnswer(
+        val questionObject = activeQuiz.questions.find { it.id == questionId }
+        if (questionObject == null) {
+            println("QuizClient: Question with ID $questionId not found in current quiz. Cannot persist full answer details.")
+            return
+        }
+
+        val answerId = "ans_${studentId}_${questionId}_${Random.nextInt(1000000)}"
+        val liveQuizAnswer = QuizAnswer(
             id = answerId,
             quizId = activeQuiz.id,
             questionId = questionId,
@@ -349,19 +350,22 @@ object QuizClient {
         try {
             val wsMessage = WebSocketMessage(
                 type = "ANSWER",
-                content = json.encodeToString(QuizAnswer.serializer(), quizAnswer),
+                content = json.encodeToString(QuizAnswer.serializer(), liveQuizAnswer),
                 sender = studentId
             )
             val messageJson = json.encodeToString(WebSocketMessage.serializer(), wsMessage)
             println("QuizClient: Sending ANSWER message: $messageJson")
             session.send(Frame.Text(messageJson))
 
+            PersistenceService.addAnswerToTodaysVisit(studentId, questionObject, liveQuizAnswer, activeQuiz.title)
+
             _submittedAnswers.update { currentAnswers ->
-                currentAnswers + (quizAnswer.questionId to quizAnswer.copy(isCorrect = null))
+                currentAnswers + (liveQuizAnswer.questionId to liveQuizAnswer.copy(isCorrect = null))
             }
-            println("QuizClient: Sent answer for question $questionId (Answer ID: $answerId). Optimistically updated UI.")
+            println("QuizClient: Sent and persisted answer for question $questionId (Answer ID: $answerId).")
         } catch (e: Exception) {
-            println("QuizClient: Error sending answer for question $questionId: ${e.message}")
+            println("QuizClient: Error sending/persisting answer for question $questionId: ${e.message}")
+            e.printStackTrace()
         }
     }
 

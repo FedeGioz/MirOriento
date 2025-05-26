@@ -1,8 +1,9 @@
 package com.federicogiordano.miroriento
 
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.*
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -12,6 +13,7 @@ import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.*
 import com.federicogiordano.miroriento.navigation.Screen
 import com.federicogiordano.miroriento.navigation.bottomNavItems
+import com.federicogiordano.miroriento.screens.HistoryScreen
 import com.federicogiordano.miroriento.screens.HomePage
 import com.federicogiordano.miroriento.screens.QuizScreen
 import com.federicogiordano.miroriento.screens.StudentRegistrationScreen
@@ -31,6 +33,12 @@ fun App() {
                 }
             )
         } else {
+            DisposableEffect(studentViewModel) {
+                onDispose {
+                    println("App: MainAppNavigation onDispose for student: ${studentViewModel.getStudent()?.id}. Ensuring data is saved.")
+                    studentViewModel.ensureDataSaved()
+                }
+            }
             MainAppNavigation(studentViewModel = studentViewModel)
         }
     }
@@ -42,18 +50,15 @@ fun MainAppNavigation(studentViewModel: StudentViewModel) {
 
     Scaffold(
         bottomBar = {
-            BottomNavigation {
+            NavigationBar {
                 val navBackStackEntry by navController.currentBackStackEntryAsState()
                 val currentDestination = navBackStackEntry?.destination
 
                 bottomNavItems.forEach { screen ->
-                    BottomNavigationItem(
+                    NavigationBarItem(
                         icon = { Icon(screen.icon, contentDescription = screen.title) },
                         label = { Text(screen.title) },
                         selected = currentDestination?.hierarchy?.any { it.route == screen.route } == true,
-                        selectedContentColor = MaterialTheme.colors.secondary,
-                        unselectedContentColor = LocalContentColor.current.copy(alpha = ContentAlpha.medium),
-                        alwaysShowLabel = true,
                         onClick = {
                             navController.navigate(screen.route) {
                                 popUpTo(navController.graph.findStartDestination().id) {
@@ -78,6 +83,9 @@ fun MainAppNavigation(studentViewModel: StudentViewModel) {
             }
             composable(Screen.Quiz.route) {
                 QuizScreen()
+            }
+            composable(Screen.History.route) {
+                HistoryScreen(studentViewModel = studentViewModel)
             }
         }
     }

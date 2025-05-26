@@ -1,12 +1,9 @@
 package com.federicogiordano.miroriento.screens
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.*
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -14,6 +11,7 @@ import androidx.compose.ui.unit.dp
 import com.federicogiordano.miroriento.data.SchoolFocus
 import com.federicogiordano.miroriento.viewmodels.StudentViewModel
 
+@OptIn(ExperimentalMaterialApi::class)
 @Composable
 fun StudentRegistrationScreen(
     studentViewModel: StudentViewModel,
@@ -53,33 +51,66 @@ fun StudentRegistrationScreen(
         Spacer(modifier = Modifier.height(16.dp))
 
         Text("Seleziona il tuo indirizzo scolastico:", style = MaterialTheme.typography.subtitle2)
-        Box(modifier = Modifier.fillMaxWidth()) {
+
+        ExposedDropdownMenuBox(
+            expanded = schoolFocusDropdownExpanded,
+            onExpandedChange = {
+                println("ExposedDropdownMenuBox onExpandedChange: $it. Current expanded: $schoolFocusDropdownExpanded")
+                schoolFocusDropdownExpanded = it
+                println("schoolFocusDropdownExpanded is now: $schoolFocusDropdownExpanded")
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
             OutlinedTextField(
                 value = selectedFocus.name.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() },
-                onValueChange = { },
+                onValueChange = {},
                 label = { Text("Indirizzo Scolastico (*)") },
-                modifier = Modifier.fillMaxWidth().clickable { schoolFocusDropdownExpanded = true },
+                modifier = Modifier.fillMaxWidth(),
                 readOnly = true,
-                trailingIcon = { Icon(Icons.Filled.ArrowDropDown, "Seleziona Indirizzo") }
+                trailingIcon = {
+                    ExposedDropdownMenuDefaults.TrailingIcon(expanded = schoolFocusDropdownExpanded)
+                }
             )
-            DropdownMenu(
+
+            ExposedDropdownMenu(
                 expanded = schoolFocusDropdownExpanded,
-                onDismissRequest = { schoolFocusDropdownExpanded = false },
+                onDismissRequest = {
+                    println("ExposedDropdownMenu onDismissRequest. Setting schoolFocusDropdownExpanded to false.")
+                    schoolFocusDropdownExpanded = false
+                    println("schoolFocusDropdownExpanded is now: $schoolFocusDropdownExpanded")
+                },
                 modifier = Modifier.fillMaxWidth()
             ) {
-                val focusValues = try { SchoolFocus.entries } catch (e: Exception) {
-                    SchoolFocus.entries
-                }
-                focusValues.forEach { focus ->
+                println("--- ExposedDropdownMenu content lambda START. schoolFocusDropdownExpanded: $schoolFocusDropdownExpanded ---")
+                val focusValues = SchoolFocus.entries
+                println("ExposedDropdownMenu: focusValues count = ${focusValues.size}")
+
+                if (focusValues.isEmpty()) {
                     DropdownMenuItem(onClick = {
-                        selectedFocus = focus
+                        println("ExposedDropdownMenu: 'Nessun indirizzo' clicked.")
                         schoolFocusDropdownExpanded = false
-                    }) {
-                        Text(focus.name.replace('_', ' ').lowercase().split(" ").joinToString(" ") { it.replaceFirstChar(Char::titlecase) })
+                    }, enabled = false) {
+                        Text("Nessun indirizzo disponibile")
+                    }
+                } else {
+                    focusValues.forEach { focus ->
+                        DropdownMenuItem(onClick = {
+                            println("ExposedDropdownMenu: Item '${focus.name}' clicked.")
+                            selectedFocus = focus
+                            schoolFocusDropdownExpanded = false
+                            println("ExposedDropdownMenu: schoolFocusDropdownExpanded set to false by item click.")
+                        }) {
+                            Text(focus.name.replace('_', ' ').lowercase().split(" ").joinToString(" ") { str -> str.replaceFirstChar(Char::titlecase) })
+                        }
                     }
                 }
+                println("--- ExposedDropdownMenu content lambda END ---")
             }
         }
+        LaunchedEffect(schoolFocusDropdownExpanded) {
+            println("LaunchedEffect: schoolFocusDropdownExpanded changed to: $schoolFocusDropdownExpanded")
+        }
+
 
         Spacer(modifier = Modifier.height(32.dp))
 

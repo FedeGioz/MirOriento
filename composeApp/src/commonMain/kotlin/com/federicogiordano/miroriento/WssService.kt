@@ -78,13 +78,13 @@ class WebSocketClient(
 
     fun connect() {
         if (_connectionState.value == ConnectionState.CONNECTED || _connectionState.value == ConnectionState.CONNECTING) {
-            println("WebSocketClient: Already connected or connecting.")
+            println("WebSocketClient: Già connesso o in fase di connessione.")
             return
         }
         _connectionState.value = ConnectionState.CONNECTING
         _errorMessage.value = null
         _errorDetails.value = null
-        println("WebSocketClient: Attempting to connect to ws://$serverUrl:$port/connect?studentId=${studentInfo.id}&studentName=${studentInfo.name}")
+        println("WebSocketClient: Tentativo di connessione a ws://$serverUrl:$port/connect?studentId=${studentInfo.id}&studentName=${studentInfo.name}")
 
         connectionJob = scope.launch {
             try {
@@ -100,7 +100,7 @@ class WebSocketClient(
                 ) {
                     webSocketSession = this
                     _connectionState.value = ConnectionState.CONNECTED
-                    println("WebSocketClient: Connected successfully to ws://$serverUrl:$port/connect")
+                    println("WebSocketClient: Connesso con successo a ws://$serverUrl:$port/connect")
 
                     val initialMessage = WebSocketMessage(
                         type = "STUDENT_CONNECTION",
@@ -113,23 +113,23 @@ class WebSocketClient(
                         for (frame in incoming) {
                             if (frame is Frame.Text) {
                                 val text = frame.readText()
-                                println("WebSocketClient: Raw message received: $text")
+                                println("WebSocketClient: Messaggio raw ricevuto: $text")
                                 try {
                                     val msg = json.decodeFromString<WebSocketMessage>(text)
                                     _receivedMessages.emit(msg)
                                 } catch (e: Exception) {
-                                    println("WebSocketClient: Error deserializing message: $text, Error: ${e.message}")
-                                    _errorMessage.value = "Error processing message: ${e.message}"
+                                    println("WebSocketClient: Errore durante la deserializzazione del messaggio: $text, Errore: ${e.message}")
+                                    _errorMessage.value = "Errore durante l'elaborazione del messaggio: ${e.message}"
                                 }
                             }
                         }
                     } catch (e: ClosedReceiveChannelException) {
-                        println("WebSocketClient: Connection closed by server: ${e.message}")
+                        println("WebSocketClient: Connessione chiusa dal server: ${e.message}")
                         if (_connectionState.value != ConnectionState.ERROR) {
                             _connectionState.value = ConnectionState.DISCONNECTED
                         }
                     } catch (e: Exception) {
-                        val errorMsg = "Error during active session: ${e.message}"
+                        val errorMsg = "Errore durante la sessione attiva: ${e.message}"
                         _errorMessage.value = errorMsg
                         _errorDetails.value = e.stackTraceToString()
                         println("WebSocketClient: $errorMsg")
@@ -138,7 +138,7 @@ class WebSocketClient(
                     }
                 }
             } catch (e: Exception) {
-                val errorMsg = "Connection error: ${e.message}"
+                val errorMsg = "Errore di connessione: ${e.message}"
                 _errorMessage.value = errorMsg
                 _errorDetails.value = e.stackTraceToString()
                 println("WebSocketClient: $errorMsg")
@@ -148,29 +148,29 @@ class WebSocketClient(
                 webSocketSession = null
                 if (_connectionState.value != ConnectionState.ERROR && _connectionState.value != ConnectionState.CONNECTING) {
                     _connectionState.value = ConnectionState.DISCONNECTED
-                    println("WebSocketClient: Disconnected (finally block).")
+                    println("WebSocketClient: Disconnesso (blocco finally).")
                 } else if (_connectionState.value == ConnectionState.CONNECTING) {
                     _connectionState.value = ConnectionState.ERROR
-                    if (_errorMessage.value == null) _errorMessage.value = "Failed to establish connection."
-                    println("WebSocketClient: Connection attempt failed (finally block).")
+                    if (_errorMessage.value == null) _errorMessage.value = "Impossibile stabilire la connessione."
+                    println("WebSocketClient: Tentativo di connessione fallito (blocco finally).")
                 }
             }
         }
     }
 
     suspend fun disconnect() {
-        println("WebSocketClient: disconnect() called.")
+        println("WebSocketClient: disconnect() chiamato.")
         _connectionState.value = ConnectionState.DISCONNECTED
         connectionJob?.cancelAndJoin()
         try {
-            webSocketSession?.close(CloseReason(CloseReason.Codes.NORMAL, "Client disconnected"))
-            println("WebSocketClient: WebSocket session close initiated.")
+            webSocketSession?.close(CloseReason(CloseReason.Codes.NORMAL, "Client disconnesso"))
+            println("WebSocketClient: Inizializzata la chiusura della sessione WebSocket.")
         } catch (e: Exception) {
-            _errorMessage.value = "Error during disconnection: ${e.message}"
-            println("WebSocketClient: Error during WebSocket session close: ${e.message}")
+            _errorMessage.value = "Errore durante la disconnessione: ${e.message}"
+            println("WebSocketClient: Errore durante la chiusura della sessione WebSocket: ${e.message}")
         } finally {
             webSocketSession = null
-            println("WebSocketClient: Disconnected. Session is now null.")
+            println("WebSocketClient: Disconnesso. La sessione è ora nulla.")
         }
     }
 
@@ -179,17 +179,17 @@ class WebSocketClient(
         if (session != null && _connectionState.value == ConnectionState.CONNECTED) {
             try {
                 val jsonMessage = json.encodeToString(message)
-                println("WebSocketClient: Sending raw message: $jsonMessage")
+                println("WebSocketClient: Invio messaggio raw: $jsonMessage")
                 session.send(Frame.Text(jsonMessage))
             } catch (e: Exception) {
-                _errorMessage.value = "Error sending message: ${e.message}"
+                _errorMessage.value = "Errore durante l'invio del messaggio: ${e.message}"
                 _errorDetails.value = e.stackTraceToString()
-                println("WebSocketClient: Error sending message: ${e.message}")
+                println("WebSocketClient: Errore durante l'invio del messaggio: ${e.message}")
             }
         } else {
-            val reason = if (session == null) "session is null" else "not connected (state: ${_connectionState.value})"
-            _errorMessage.value = "Cannot send message: $reason"
-            println("WebSocketClient: Cannot send message, $reason.")
+            val reason = if (session == null) "la sessione è nulla" else "non connesso (stato: ${_connectionState.value})"
+            _errorMessage.value = "Impossibile inviare il messaggio: $reason"
+            println("WebSocketClient: Impossibile inviare il messaggio, $reason.")
         }
     }
 
@@ -197,7 +197,7 @@ class WebSocketClient(
         serverUrl = newUrl
         port = newPort
         studentInfo = newStudentInfo
-        println("WebSocketClient: Connection parameters updated. New URL: $serverUrl, Port: $port, Student: ${studentInfo.name}")
+        println("WebSocketClient: Parametri di connessione aggiornati. Nuova URL: $serverUrl, Porta: $port, Studente: ${studentInfo.name}")
     }
 
 }

@@ -17,7 +17,7 @@ class HomeViewModel : ViewModel() {
         if (studentId.isNotBlank() && studentName.isNotBlank()) {
             QuizClient.configure(studentId, studentName)
         } else {
-            println("HomeViewModel: Student ID or Name is blank, cannot configure.")
+            println("HomeViewModel: L'ID o il nome dello studente è vuoto, impossibile configurare.")
         }
     }
 
@@ -27,13 +27,13 @@ class HomeViewModel : ViewModel() {
                 QuizClient.connect(serverIp, serverPort, path)
             }
         } else {
-            println("HomeViewModel: Server IP or Path is blank, cannot connect.")
+            println("HomeViewModel: L'IP del server o il percorso è vuoto, impossibile connettersi.")
         }
     }
 
     fun disconnectFromServer() {
         viewModelScope.launch {
-            QuizClient.disconnect("User initiated disconnect from HomePage")
+            QuizClient.disconnect("Disconnessione avviata dall'utente dalla pagina Home")
         }
     }
 }

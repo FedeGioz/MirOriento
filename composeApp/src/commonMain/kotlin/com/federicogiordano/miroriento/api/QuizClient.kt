@@ -43,7 +43,7 @@ object QuizClient {
     private var currentStudentName: String? = null
 
     private val _connectionStatus = MutableStateFlow<ConnectionStatus>(
-        ConnectionStatus.Disconnected("Awaiting connection attempt")
+        ConnectionStatus.Disconnected("In attesa del tentativo di connessione")
     )
     val connectionStatus: StateFlow<ConnectionStatus> = _connectionStatus.asStateFlow()
 
@@ -67,14 +67,14 @@ object QuizClient {
     private const val DEFAULT_JOYSTICK_TOKEN = "miroriento_joystick_user"
 
     init {
-        println("QuizClient Singleton: Initialized.")
+        println("QuizClient Singleton: Inizializzato.")
         initializeHttpClient()
     }
 
     fun configure(studentId: String, studentName: String) {
         this.currentStudentId = studentId
         this.currentStudentName = studentName
-        println("QuizClient: Configured with Student ID: '$currentStudentId', Name: '$currentStudentName'")
+        println("QuizClient: Configurato con ID Studente: '$currentStudentId', Nome: '$currentStudentName'")
 
         _showJoystick.value = false
         _currentQuiz.value = null
@@ -85,7 +85,7 @@ object QuizClient {
 
     private fun initializeHttpClient() {
         if (httpClient == null) {
-            println("QuizClient: Initializing HttpClient.")
+            println("QuizClient: Inizializzazione di HttpClient.")
             httpClient = HttpClient(CIO) {
                 install(WebSockets)
             }
@@ -97,20 +97,20 @@ object QuizClient {
         val studentName = currentStudentName
 
         if (studentId.isNullOrBlank() || studentName.isNullOrBlank()) {
-            _connectionStatus.value = ConnectionStatus.Error("Student details not configured. Call QuizClient.configure() first.")
-            println("QuizClient: Connect failed - student details not configured.")
+            _connectionStatus.value = ConnectionStatus.Error("Dettagli studente non configurati. Chiamare prima QuizClient.configure().")
+            println("QuizClient: Connessione fallita - dettagli studente non configurati.")
             return
         }
 
-        println("QuizClient: connect() called. Server: $serverIp:$serverPort$path, Student: $studentId ($studentName)")
+        println("QuizClient: connect() chiamato. Server: $serverIp:$serverPort$path, Studente: $studentId ($studentName)")
         if (connectionStatus.value == ConnectionStatus.Connected || connectionStatus.value is ConnectionStatus.Connecting) {
-            println("QuizClient: Already connected or attempting to connect. Current status: ${connectionStatus.value}")
+            println("QuizClient: Già connesso o tentativo di connessione. Stato attuale: ${connectionStatus.value}")
             return
         }
 
         initializeHttpClient()
         val connectUrl = "ws://$serverIp:$serverPort$path"
-        _connectionStatus.value = ConnectionStatus.Connecting("Attempting to connect to $connectUrl")
+        _connectionStatus.value = ConnectionStatus.Connecting("Tentativo di connessione a $connectUrl")
         resetClientStateForNewSession()
 
         clientScope.launch {
@@ -119,42 +119,42 @@ object QuizClient {
                     method = HttpMethod.Get, host = serverIp, port = serverPort, path = path
                 ) {
                     webSocketSession = this
-                    println("QuizClient: WebSocket session established with $connectUrl.")
+                    println("QuizClient: Sessione WebSocket stabilita con $connectUrl.")
                     val studentConnectionInfo = StudentConnection(studentId, studentName)
                     val initialMessageJson = json.encodeToString(StudentConnection.serializer(), studentConnectionInfo)
                     send(Frame.Text(initialMessageJson))
-                    println("QuizClient: Sent initial StudentConnection message: $initialMessageJson")
+                    println("QuizClient: Inviato messaggio iniziale StudentConnection: $initialMessageJson")
                     _connectionStatus.value = ConnectionStatus.Connected
-                    println("QuizClient: Status set to Connected. Starting to listen for messages.")
+                    println("QuizClient: Stato impostato su Connesso. Inizio ad ascoltare i messaggi.")
                     listenForMessages()
                 }
             } catch (e: CancellationException) {
-                println("QuizClient: Connection coroutine cancelled: ${e.message}")
+                println("QuizClient: Coroutine di connessione annullata: ${e.message}")
                 if (connectionStatus.value !is ConnectionStatus.Disconnected) {
-                    _connectionStatus.value = ConnectionStatus.Disconnected("Connection cancelled by client")
+                    _connectionStatus.value = ConnectionStatus.Disconnected("Connessione annullata dal client")
                 }
             } catch (e: Exception) {
-                println("QuizClient: CRITICAL - Failed to connect or error during session with $connectUrl: ${e.message}")
+                println("QuizClient: CRITICO - Impossibile connettersi o errore durante la sessione con $connectUrl: ${e.message}")
                 e.printStackTrace()
-                _connectionStatus.value = ConnectionStatus.Error("Connection failed: ${e.message ?: "Unknown error"}")
+                _connectionStatus.value = ConnectionStatus.Error("Connessione fallita: ${e.message ?: "Errore sconosciuto"}")
             } finally {
-                println("QuizClient: WebSocket block in connect() finished for $connectUrl. Session: $webSocketSession")
+                println("QuizClient: Blocco WebSocket in connect() terminato per $connectUrl. Sessione: $webSocketSession")
                 val wasConnected = connectionStatus.value == ConnectionStatus.Connected
                 val wasConnecting = connectionStatus.value is ConnectionStatus.Connecting
                 webSocketSession = null
                 if (wasConnected || wasConnecting) {
                     if (_connectionStatus.value !is ConnectionStatus.Error) {
-                        _connectionStatus.value = ConnectionStatus.Disconnected("Session ended")
+                        _connectionStatus.value = ConnectionStatus.Disconnected("Sessione terminata")
                     }
                 }
                 _currentMapBase64.value = null
-                println("QuizClient: Post-connect block. Final status: ${connectionStatus.value}")
+                println("QuizClient: Post-blocco di connessione. Stato finale: ${connectionStatus.value}")
             }
         }
     }
 
     private fun resetClientStateForNewSession() {
-        println("QuizClient: resetClientStateForNewSession called.")
+        println("QuizClient: resetClientStateForNewSession chiamato.")
         _currentQuiz.value = null
         _submittedAnswers.value = emptyMap()
         _showJoystick.value = false
@@ -164,60 +164,60 @@ object QuizClient {
 
     private suspend fun DefaultClientWebSocketSession.listenForMessages() {
         try {
-            println("QuizClient: Starting to listen for messages from ${call.request.url}...")
+            println("QuizClient: Inizio ad ascoltare i messaggi da ${call.request.url}...")
             for (frame in incoming) {
                 when (frame) {
                     is Frame.Text -> {
                         val text = frame.readText()
-                        println("QuizClient: Raw message received: $text")
+                        println("QuizClient: Messaggio raw ricevuto: $text")
                         try {
                             val webSocketMessage = json.decodeFromString<WebSocketMessage>(text)
                             handleWebSocketMessage(webSocketMessage)
                         } catch (e: SerializationException) {
-                            println("QuizClient: CRITICAL - Error deserializing WebSocketMessage: ${e.message}. Raw text: $text")
+                            println("QuizClient: CRITICO - Errore durante la deserializzazione di WebSocketMessage: ${e.message}. Testo raw: $text")
                         } catch (e: Exception) {
-                            println("QuizClient: CRITICAL - Unexpected error processing frame content: ${e.message}. Raw text: $text")
+                            println("QuizClient: CRITICO - Errore inaspettato durante l'elaborazione del contenuto del frame: ${e.message}. Testo raw: $text")
                         }
                     }
                     is Frame.Close -> {
                         val reason = frame.readReason()
-                        println("QuizClient: Received Close frame: ${reason?.code} ${reason?.message}")
+                        println("QuizClient: Ricevuto frame di chiusura: ${reason?.code} ${reason?.message}")
                         _showJoystick.value = false
                         _currentMapBase64.value = null
                         if (connectionStatus.value !is ConnectionStatus.Error && connectionStatus.value !is ConnectionStatus.Disconnected) {
-                            _connectionStatus.value = ConnectionStatus.Disconnected("Connection closed by server: ${reason?.message ?: "No reason"}")
+                            _connectionStatus.value = ConnectionStatus.Disconnected("Connessione chiusa dal server: ${reason?.message ?: "Nessun motivo"}")
                         }
                         return
                     }
                     else -> {
-                        println("QuizClient: Received other frame type: ${frame.frameType.name}")
+                        println("QuizClient: Ricevuto altro tipo di frame: ${frame.frameType.name}")
                     }
                 }
             }
         } catch (e: ClosedReceiveChannelException) {
-            println("QuizClient: WebSocket channel closed by remote: ${e.message}")
+            println("QuizClient: Canale WebSocket chiuso dal remoto: ${e.message}")
             if (connectionStatus.value !is ConnectionStatus.Error && connectionStatus.value !is ConnectionStatus.Disconnected) {
-                _connectionStatus.value = ConnectionStatus.Disconnected("Connection closed by server")
+                _connectionStatus.value = ConnectionStatus.Disconnected("Connessione chiusa dal server")
             }
         } catch (e: CancellationException) {
-            println("QuizClient: Message listening coroutine cancelled: ${e.message}")
+            println("QuizClient: Coroutine di ascolto messaggi annullata: ${e.message}")
         } catch (e: Exception) {
-            println("QuizClient: CRITICAL - Error in message listening loop: ${e.message}")
+            println("QuizClient: CRITICO - Errore nel loop di ascolto messaggi: ${e.message}")
             e.printStackTrace()
             if (connectionStatus.value !is ConnectionStatus.Error && connectionStatus.value !is ConnectionStatus.Disconnected) {
-                _connectionStatus.value = ConnectionStatus.Error("Error receiving messages: ${e.message ?: "Unknown error"}")
+                _connectionStatus.value = ConnectionStatus.Error("Errore nella ricezione dei messaggi: ${e.message ?: "Errore sconosciuto"}")
             }
         } finally {
-            println("QuizClient: Stopped listening for messages (listenForMessages finally block).")
+            println("QuizClient: Interrotto l'ascolto dei messaggi (blocco finally di listenForMessages).")
             if (connectionStatus.value == ConnectionStatus.Connected) {
-                _connectionStatus.value = ConnectionStatus.Disconnected("Message listener stopped unexpectedly")
+                _connectionStatus.value = ConnectionStatus.Disconnected("Listener di messaggi interrotto inaspettatamente")
             }
             _currentMapBase64.value = null
         }
     }
 
     private fun handleWebSocketMessage(message: WebSocketMessage) {
-        println("QuizClient: Handling message type '${message.type}' from sender '${message.sender}'.")
+        println("QuizClient: Gestione messaggio di tipo '${message.type}' dal mittente '${message.sender}'.")
         val activeStudentId = currentStudentId
 
         when (message.type) {
@@ -227,25 +227,25 @@ object QuizClient {
                         val quiz = json.decodeFromString<Quiz>(message.content)
                         _currentQuiz.value = quiz
                         _submittedAnswers.value = emptyMap()
-                        println("QuizClient: Quiz '${quiz.title}' (ID: ${quiz.id}) received and parsed successfully. ${quiz.questions.size} questions.")
+                        println("QuizClient: Quiz '${quiz.title}' (ID: ${quiz.id}) ricevuto e analizzato con successo. ${quiz.questions.size} domande.")
                     } catch (e: Exception) {
-                        println("QuizClient: CRITICAL - Error parsing QUIZ message: ${e.message}. Content: ${message.content}")
-                        _connectionStatus.value = ConnectionStatus.Error("Failed to parse quiz data: ${e.message}")
+                        println("QuizClient: CRITICO - Errore durante l'analisi del messaggio QUIZ: ${e.message}. Contenuto: ${message.content}")
+                        _connectionStatus.value = ConnectionStatus.Error("Impossibile analizzare i dati del quiz: ${e.message}")
                     }
                 } else {
-                    println("QuizClient: Received QUIZ message not from professor. Sender: '${message.sender}'. Ignoring.")
+                    println("QuizClient: Ricevuto messaggio QUIZ non dal professore. Mittente: '${message.sender}'. Ignorato.")
                 }
             }
             "ANSWER_RECEIVED" -> {
-                println("QuizClient: Received 'ANSWER_RECEIVED' confirmation from server. Content: ${message.content}")
+                println("QuizClient: Ricevuta conferma 'ANSWER_RECEIVED' dal server. Contenuto: ${message.content}")
             }
             "ANSWER_EVALUATED" -> {
-                println("QuizClient: Attempting to process ANSWER_EVALUATED. Content: ${message.content}")
+                println("QuizClient: Tentativo di elaborare ANSWER_EVALUATED. Contenuto: ${message.content}")
                 try {
                     val evaluatedLiveAnswer = json.decodeFromString<QuizAnswer>(message.content)
 
                     val finalAnswerState = if (evaluatedLiveAnswer.isCorrect == null) {
-                        println("QuizClient: 'isCorrect' is null in evaluated answer for QID '${evaluatedLiveAnswer.questionId}'. Interpreting as 'false'.")
+                        println("QuizClient: 'isCorrect' è nullo nella risposta valutata per QID '${evaluatedLiveAnswer.questionId}'. Interpretato come 'false'.")
                         evaluatedLiveAnswer.copy(isCorrect = false)
                     } else {
                         evaluatedLiveAnswer
@@ -256,61 +256,61 @@ object QuizClient {
                             currentAnswers + (finalAnswerState.questionId to finalAnswerState)
                         }
                         PersistenceService.updateAnswerInTodaysVisit(activeStudentId, finalAnswerState)
-                        println("QuizClient: Updated UI and persisted evaluated answer for QID '${finalAnswerState.questionId}'.")
+                        println("QuizClient: UI aggiornata e risposta valutata persistita per QID '${finalAnswerState.questionId}'.")
                     } else {
-                        println("QuizClient: Received ANSWER_EVALUATED for student '${finalAnswerState.studentId}', but current client is '$activeStudentId'. Ignoring for persistence/UI update here.")
+                        println("QuizClient: Ricevuto ANSWER_EVALUATED per lo studente '${finalAnswerState.studentId}', ma il client attuale è '$activeStudentId'. Ignorato per la persistenza/aggiornamento UI qui.")
                     }
                 } catch (e: Exception) {
-                    println("QuizClient: CRITICAL - Error processing ANSWER_EVALUATED message: ${e.message}. Content: ${message.content}")
+                    println("QuizClient: CRITICO - Errore durante l'elaborazione del messaggio ANSWER_EVALUATED: ${e.message}. Contenuto: ${message.content}")
                 }
             }
             "SESSION_ENDED" -> {
-                println("QuizClient: Received SESSION_ENDED from '${message.sender}'. Content: ${message.content}")
+                println("QuizClient: Ricevuto SESSION_ENDED da '${message.sender}'. Contenuto: ${message.content}")
                 _currentQuiz.value = null
-                _connectionStatus.value = ConnectionStatus.Disconnected("Session ended by server: ${message.content}")
+                _connectionStatus.value = ConnectionStatus.Disconnected("Sessione terminata dal server: ${message.content}")
                 _showJoystick.value = false
                 _currentMapBase64.value = null
             }
             "ALLOW_JOYSTICK" -> {
                 if (message.sender == "professor") {
-                    println("QuizClient: ALLOW_JOYSTICK message received. Enabling joystick.")
+                    println("QuizClient: Messaggio ALLOW_JOYSTICK ricevuto. Abilitazione joystick.")
                     _showJoystick.value = true
                 } else {
-                    println("QuizClient: ALLOW_JOYSTICK message not from professor. Sender: '${message.sender}'. Ignoring.")
+                    println("QuizClient: Messaggio ALLOW_JOYSTICK non dal professore. Mittente: '${message.sender}'. Ignorato.")
                 }
             }
             "DISABLE_JOYSTICK" -> {
                 if (message.sender == "professor") {
-                    println("QuizClient: DISABLE_JOYSTICK message received. Disabling joystick.")
+                    println("QuizClient: Messaggio DISABLE_JOYSTICK ricevuto. Disabilitazione joystick.")
                     _showJoystick.value = false
                 } else {
-                    println("QuizClient: DISABLE_JOYSTICK message not from professor. Sender: '${message.sender}'. Ignoring.")
+                    println("QuizClient: Messaggio DISABLE_JOYSTICK non dal professore. Mittente: '${message.sender}'. Ignorato.")
                 }
             }
             "ROBOT_STATUS" -> {
                 if (message.sender == "server" || message.sender == "professor") {
-                    println("QuizClient: Received ROBOT_STATUS from '${message.sender}'. Attempting to parse. Content: ${message.content}")
+                    println("QuizClient: Ricevuto ROBOT_STATUS da '${message.sender}'. Tentativo di analisi. Contenuto: ${message.content}")
                     try {
                         val parsedRobotStatus = json.decodeFromString<RobotStatus>(message.content)
                         _robotStatus.value = parsedRobotStatus
-                        println("QuizClient: ROBOT_STATUS parsed successfully. Robot: '${parsedRobotStatus.robotName}', Battery: ${parsedRobotStatus.battery_percentage}%.")
+                        println("QuizClient: ROBOT_STATUS analizzato con successo. Robot: '${parsedRobotStatus.robotName}', Batteria: ${parsedRobotStatus.battery_percentage}%.")
                     } catch (e: Exception) {
-                        println("QuizClient: CRITICAL - Error parsing ROBOT_STATUS message: ${e.message}. Content: ${message.content}")
+                        println("QuizClient: CRITICO - Errore durante l'analisi del messaggio ROBOT_STATUS: ${e.message}. Contenuto: ${message.content}")
                     }
                 } else {
-                    println("QuizClient: Received ROBOT_STATUS message not from server or professor. Sender: '${message.sender}'. Ignoring.")
+                    println("QuizClient: Ricevuto messaggio ROBOT_STATUS non dal server o dal professore. Mittente: '${message.sender}'. Ignorato.")
                 }
             }
             "MAP_UPDATE" -> {
                 if (message.sender == "server" || message.sender == "professor") {
-                    println("QuizClient: MAP_UPDATE message received from '${message.sender}'. Content length: ${message.content.length}")
+                    println("QuizClient: Messaggio MAP_UPDATE ricevuto da '${message.sender}'. Lunghezza contenuto: ${message.content.length}")
                     _currentMapBase64.value = message.content
                 } else {
-                    println("QuizClient: Received MAP_UPDATE message not from a recognized sender ('${message.sender}'). Ignoring.")
+                    println("QuizClient: Ricevuto messaggio MAP_UPDATE non da un mittente riconosciuto ('${message.sender}'). Ignorato.")
                 }
             }
             else -> {
-                println("QuizClient: Received unknown message type: '${message.type}'. Sender: '${message.sender}'. Content: ${message.content}")
+                println("QuizClient: Ricevuto tipo di messaggio sconosciuto: '${message.type}'. Mittente: '${message.sender}'. Contenuto: ${message.content}")
             }
         }
     }
@@ -321,18 +321,18 @@ object QuizClient {
         val activeQuiz = _currentQuiz.value
 
         if (studentId.isNullOrBlank() || studentName.isNullOrBlank() || activeQuiz == null) {
-            println("QuizClient: Cannot send answer, student details not configured or no active quiz.")
+            println("QuizClient: Impossibile inviare la risposta, dettagli studente non configurati o nessun quiz attivo.")
             return
         }
         val session = webSocketSession
         if (session == null || connectionStatus.value != ConnectionStatus.Connected) {
-            println("QuizClient: Cannot send answer, not connected. Status: ${connectionStatus.value}")
+            println("QuizClient: Impossibile inviare la risposta, non connesso. Stato: ${connectionStatus.value}")
             return
         }
 
         val questionObject = activeQuiz.questions.find { it.id == questionId }
         if (questionObject == null) {
-            println("QuizClient: Question with ID $questionId not found in current quiz. Cannot persist full answer details.")
+            println("QuizClient: Domanda con ID $questionId non trovata nel quiz attuale. Impossibile persistere i dettagli completi della risposta.")
             return
         }
 
@@ -354,7 +354,7 @@ object QuizClient {
                 sender = studentId
             )
             val messageJson = json.encodeToString(WebSocketMessage.serializer(), wsMessage)
-            println("QuizClient: Sending ANSWER message: $messageJson")
+            println("QuizClient: Invio messaggio ANSWER: $messageJson")
             session.send(Frame.Text(messageJson))
 
             PersistenceService.addAnswerToTodaysVisit(studentId, questionObject, liveQuizAnswer, activeQuiz.title)
@@ -362,9 +362,9 @@ object QuizClient {
             _submittedAnswers.update { currentAnswers ->
                 currentAnswers + (liveQuizAnswer.questionId to liveQuizAnswer.copy(isCorrect = null))
             }
-            println("QuizClient: Sent and persisted answer for question $questionId (Answer ID: $answerId).")
+            println("QuizClient: Risposta inviata e persistita per la domanda $questionId (ID risposta: $answerId).")
         } catch (e: Exception) {
-            println("QuizClient: Error sending/persisting answer for question $questionId: ${e.message}")
+            println("QuizClient: Errore durante l'invio/persistenza della risposta per la domanda $questionId: ${e.message}")
             e.printStackTrace()
         }
     }
@@ -372,12 +372,12 @@ object QuizClient {
     suspend fun sendVelocity(linearControl: Float, angularControl: Float) {
         val studentId = currentStudentId
         if (studentId.isNullOrBlank()) {
-            println("QuizClient: Cannot send velocity, studentId not configured.")
+            println("QuizClient: Impossibile inviare la velocità, studentId non configurato.")
             return
         }
         val session = webSocketSession
         if (session == null || connectionStatus.value != ConnectionStatus.Connected) {
-            println("QuizClient: Cannot send velocity, not connected. Status: ${connectionStatus.value}")
+            println("QuizClient: Impossibile inviare la velocità, non connesso. Stato: ${connectionStatus.value}")
             return
         }
 
@@ -409,13 +409,13 @@ object QuizClient {
             session.send(Frame.Text(messageJson))
 
         } catch (e: Exception) {
-            println("QuizClient: Error sending velocity: ${e.message}")
+            println("QuizClient: Errore durante l'invio della velocità: ${e.message}")
             e.printStackTrace()
         }
     }
 
-    suspend fun disconnect(reason: String = "User initiated disconnect") {
-        println("QuizClient: disconnect() called. Reason: $reason. Current status: ${connectionStatus.value}")
+    suspend fun disconnect(reason: String = "Disconnessione avviata dall'utente") {
+        println("QuizClient: disconnect() chiamato. Motivo: $reason. Stato attuale: ${connectionStatus.value}")
         val sessionToClose = webSocketSession
         webSocketSession = null
 
@@ -429,21 +429,21 @@ object QuizClient {
 
         try {
             sessionToClose?.close(CloseReason(CloseReason.Codes.NORMAL, reason))
-            println("QuizClient: WebSocket session close initiated for $sessionToClose.")
+            println("QuizClient: Inizializzata la chiusura della sessione WebSocket per $sessionToClose.")
         } catch (e: Exception) {
-            println("QuizClient: Error during WebSocket session close: ${e.message}")
+            println("QuizClient: Errore durante la chiusura della sessione WebSocket: ${e.message}")
         }
-        println("QuizClient: Disconnected. Session is now definitively null. Status: ${_connectionStatus.value}")
+        println("QuizClient: Disconnesso. La sessione è ora definitivamente null. Stato: ${_connectionStatus.value}")
     }
 
 
     fun cleanup() {
-        println("QuizClient Singleton: cleanup() called.")
+        println("QuizClient Singleton: cleanup() chiamato.")
         clientScope.launch {
-            disconnect("Application cleanup")
+            disconnect("Pulizia applicazione")
         }
         httpClient?.close()
         httpClient = null
-        println("QuizClient Singleton: HTTP client closed. Resources cleaned up.")
+        println("QuizClient Singleton: client HTTP chiuso. Risorse pulite.")
     }
 }

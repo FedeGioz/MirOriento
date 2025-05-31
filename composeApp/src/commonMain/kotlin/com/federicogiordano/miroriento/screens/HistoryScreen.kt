@@ -25,7 +25,7 @@ fun HistoryScreen(studentViewModel: StudentViewModel) {
 
     LaunchedEffect(studentId) {
         if (!studentId.isNullOrBlank()) {
-            println("HistoryScreen: LaunchedEffect - Requesting student session reload for ID: $studentId")
+            println("HistoryScreen: LaunchedEffect - Richiesta ricarica sessione studente per ID: $studentId")
             studentViewModel.loadStudentSession(studentId)
         }
     }
@@ -84,7 +84,7 @@ private fun VisitDetailsView(visitRecord: VisitRecord) {
                     try {
                         uriHandler.openUri(brochureLink)
                     } catch (e: Exception) {
-                        println("HistoryScreen: Could not open brochure link - $e")
+                        println("HistoryScreen: Impossibile aprire il link della brochure - $e")
                     }
                 },
                 modifier = Modifier

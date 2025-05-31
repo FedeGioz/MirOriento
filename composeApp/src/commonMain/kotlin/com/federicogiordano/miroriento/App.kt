@@ -29,13 +29,13 @@ fun App() {
             StudentRegistrationScreen(
                 studentViewModel = studentViewModel,
                 onRegistrationComplete = {
-                    println("App: Registration signal received. StudentInfo updated.")
+                    println("App: Segnale di registrazione ricevuto. StudentInfo aggiornato.")
                 }
             )
         } else {
             DisposableEffect(studentViewModel) {
                 onDispose {
-                    println("App: MainAppNavigation onDispose for student: ${studentViewModel.getStudent()?.id}. Ensuring data is saved.")
+                    println("App: MainAppNavigation onDispose per studente: ${studentViewModel.getStudent()?.id}. Assicurando che i dati siano salvati.")
                     studentViewModel.ensureDataSaved()
                 }
             }

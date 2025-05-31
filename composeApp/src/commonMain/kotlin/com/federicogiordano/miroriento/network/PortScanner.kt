@@ -24,35 +24,22 @@ class PortScanner {
         _scanStatus.value = ScanStatus.Scanning
         log("Avvio scansione del dispositivo del professore...")
 
-        val prioritizedIp = "192.168.12.166"
-        log("Verifica IP prioritario: $prioritizedIp")
-        if (isPortOpen(prioritizedIp, 8080)) {
-            _scanStatus.value = ScanStatus.Found(prioritizedIp)
-            log("Dispositivo del professore trovato all'IP prioritario: $prioritizedIp")
-            return prioritizedIp
-        }
-
-        log("Tentativo di recuperare l'IP del gateway...")
         val gatewayIp = getGatewayIpAddress()
 
         if (gatewayIp != null) {
             log("IP del gateway ottenuto: $gatewayIp. Verifica porta...")
-            if (gatewayIp == prioritizedIp) {
-                log("L'IP del gateway ($gatewayIp) è uguale all'IP prioritario già controllato.")
+            if (isPortOpen(gatewayIp, 8080)) {
+                _scanStatus.value = ScanStatus.Found(gatewayIp)
+                log("Dispositivo del professore trovato all'IP del gateway: $gatewayIp")
+                return gatewayIp
             } else {
-                if (isPortOpen(gatewayIp, 8080)) {
-                    _scanStatus.value = ScanStatus.Found(gatewayIp)
-                    log("Dispositivo del professore trovato all'IP del gateway: $gatewayIp")
-                    return gatewayIp
-                } else {
-                    log("Porta 8080 non aperta sull'IP del gateway: $gatewayIp")
-                }
+                log("Porta 8080 non aperta sull'IP del gateway: $gatewayIp")
             }
         } else {
             log("Impossibile determinare l'IP del gateway. Controlla le implementazioni 'actual' di getGatewayIpAddress().")
         }
 
-        log("Dispositivo del professore non trovato (controllati IP prioritario e gateway).")
+        log("Dispositivo del professore non trovato (controllato IP gateway).")
         _scanStatus.value = ScanStatus.NotFound
         return null
     }

@@ -33,99 +33,98 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
-import com.federicogiordano.miroriento.utils.rememberBase64ImageBitmap
 
-private const val DEFAULT_SERVER_PORT = 8080 
-private const val DEFAULT_SERVER_PATH = "/connect" 
+private const val DEFAULT_SERVER_PORT = 8080
+private const val DEFAULT_SERVER_PATH = "/connect"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomePage(
     studentViewModel: StudentViewModel = viewModel()
 ) {
-    val currentStudentInfo by studentViewModel.studentInfo.collectAsState() 
-    val connectionStatus by QuizClient.connectionStatus.collectAsState() 
-    val robotStatus by QuizClient.robotStatus.collectAsState() 
-    val showJoystick by QuizClient.showJoystick.collectAsState() 
-    val currentMapBase64 by QuizClient.currentMapBase64.collectAsState() 
+    val currentStudentInfo by studentViewModel.studentInfo.collectAsState()
+    val connectionStatus by QuizClient.connectionStatus.collectAsState()
+    val robotStatus by QuizClient.robotStatus.collectAsState()
+    val showJoystick by QuizClient.showJoystick.collectAsState()
+    val currentMapBase64 by QuizClient.currentMapBase64.collectAsState()
 
-    val portScanner = remember { PortScanner() } 
-    val scanStatus by portScanner.scanStatus.collectAsState() 
+    val portScanner = remember { PortScanner() }
+    val scanStatus by portScanner.scanStatus.collectAsState()
 
-    val coroutineScope = rememberCoroutineScope() 
-    var currentOperationMessage by remember { mutableStateOf("In attesa di registrazione studente...") } 
+    val coroutineScope = rememberCoroutineScope()
+    var currentOperationMessage by remember { mutableStateOf("In attesa di registrazione studente...") }
 
-    var connectionTrigger by remember(currentStudentInfo?.id) { mutableStateOf(1) } 
+    var connectionTrigger by remember(currentStudentInfo?.id) { mutableStateOf(1) }
 
-    var isJoystickCurrentlyActive by remember { mutableStateOf(false) } 
-    val sendZeroVelocityJob = remember { mutableStateOf<Job?>(null) } 
+    var isJoystickCurrentlyActive by remember { mutableStateOf(false) }
+    val sendZeroVelocityJob = remember { mutableStateOf<Job?>(null) }
 
     LaunchedEffect(connectionTrigger, currentStudentInfo?.id) {
-        val student = currentStudentInfo 
-        val triggerValue = connectionTrigger 
+        val student = currentStudentInfo
+        val triggerValue = connectionTrigger
 
-        println("HomePage LE (Connection Sequence): Triggered with signal $triggerValue. Student: ${student?.id}") 
+        println("HomePage LE (Sequenza di Connessione): Attivato con segnale $triggerValue. Studente: ${student?.id}")
 
         if (student == null) {
-            currentOperationMessage = "Registrazione studente richiesta." 
-            println("HomePage LE: No student info, aborting connection sequence.") 
+            currentOperationMessage = "Registrazione studente richiesta."
+            println("HomePage LE: Nessuna informazione studente, annullamento sequenza di connessione.")
             return@LaunchedEffect
         }
 
-        val currentConnStatusSnapshot = QuizClient.connectionStatus.value 
+        val currentConnStatusSnapshot = QuizClient.connectionStatus.value
         if (!(currentConnStatusSnapshot is ConnectionStatus.Disconnected || currentConnStatusSnapshot is ConnectionStatus.Error)) {
-            println("HomePage LE: Skipped connection sequence for signal $triggerValue. Status is $currentConnStatusSnapshot, not Disconnected/Error.") 
+            println("HomePage LE: Sequenza di connessione saltata per il segnale $triggerValue. Lo stato è $currentConnStatusSnapshot, non Disconnesso/Errore.")
             return@LaunchedEffect
         }
 
-        currentOperationMessage = "Avvio procedura di connessione..." 
-        println("HomePage LE: Starting full connection sequence for signal $triggerValue. Current status: $currentConnStatusSnapshot") 
+        currentOperationMessage = "Avvio procedura di connessione..."
+        println("HomePage LE: Avvio sequenza di connessione completa per il segnale $triggerValue. Stato attuale: $currentConnStatusSnapshot")
 
-        currentOperationMessage = "Configurazione sessione per ${student.name}..." 
-        QuizClient.configure(student.id, student.name) 
+        currentOperationMessage = "Configurazione sessione per ${student.name}..."
+        QuizClient.configure(student.id, student.name)
 
-        currentOperationMessage = "Ricerca dispositivo professore sulla rete..." 
-        val foundIp = portScanner.findProfessorDevice() 
-        println("HomePage LE: Port scan finished. IP Found: $foundIp") 
+        currentOperationMessage = "Ricerca dispositivo professore sulla rete..."
+        val foundIp = portScanner.findProfessorDevice()
+        println("HomePage LE: Scansione porte terminata. IP Trovato: $foundIp")
 
         if (foundIp != null) {
-            currentOperationMessage = "Professore trovato ($foundIp). Tentativo di connessione..." 
+            currentOperationMessage = "Professore trovato ($foundIp). Tentativo di connessione..."
             QuizClient.connect(
                 serverIp = foundIp,
                 serverPort = DEFAULT_SERVER_PORT,
                 path = DEFAULT_SERVER_PATH
-            ) 
+            )
         } else {
-            currentOperationMessage = "Dispositivo professore non trovato. Puoi ritentare." 
+            currentOperationMessage = "Dispositivo professore non trovato. Puoi ritentare."
         }
-        println("HomePage LE: Connection sequence finished for signal $triggerValue.") 
+        println("HomePage LE: Sequenza di connessione terminata per il segnale $triggerValue.")
     }
 
-    LaunchedEffect(connectionStatus, currentStudentInfo) { 
-        val student = currentStudentInfo 
-        val currentConnStatus = connectionStatus 
+    LaunchedEffect(connectionStatus, currentStudentInfo) {
+        val student = currentStudentInfo
+        val currentConnStatus = connectionStatus
 
         if (student != null) {
-            if (currentOperationMessage.contains("(Signal:") && 
-                (currentConnStatus is ConnectionStatus.Connecting || scanStatus == PortScanner.ScanStatus.Scanning)) { 
+            if (currentOperationMessage.contains("(Signal:") &&
+                (currentConnStatus is ConnectionStatus.Connecting || scanStatus == PortScanner.ScanStatus.Scanning)) {
             } else {
                 when (currentConnStatus) {
-                    is ConnectionStatus.Connected -> currentOperationMessage = "Connesso come ${student.name}!" 
-                    is ConnectionStatus.Connecting -> currentOperationMessage = "Connessione in corso: ${currentConnStatus.message}..." 
+                    is ConnectionStatus.Connected -> currentOperationMessage = "Connesso come ${student.name}!"
+                    is ConnectionStatus.Connecting -> currentOperationMessage = "Connessione in corso: ${currentConnStatus.message}..."
                     is ConnectionStatus.Disconnected -> {
-                        if (!currentOperationMessage.startsWith("Dispositivo professore non trovato")) { 
-                            currentOperationMessage = "Disconnesso: ${currentConnStatus.reason}. Puoi ritentare." 
+                        if (!currentOperationMessage.startsWith("Dispositivo professore non trovato")) {
+                            currentOperationMessage = "Disconnesso: ${currentConnStatus.reason}. Puoi ritentare."
                         }
                     }
                     is ConnectionStatus.Error -> {
-                        if (!currentOperationMessage.startsWith("Dispositivo professore non trovato")) { 
-                            currentOperationMessage = "Errore: ${currentConnStatus.message}. Puoi ritentare." 
+                        if (!currentOperationMessage.startsWith("Dispositivo professore non trovato")) {
+                            currentOperationMessage = "Errore: ${currentConnStatus.message}. Puoi ritentare."
                         }
                     }
                 }
             }
         } else {
-            currentOperationMessage = "Dati studente non trovati. Completa la registrazione." 
+            currentOperationMessage = "Dati studente non trovati. Completa la registrazione."
         }
     }
 
@@ -140,27 +139,27 @@ fun HomePage(
             )
         }
     ) { paddingValues ->
-        Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) { 
+        Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(16.dp)
-                    .verticalScroll(rememberScrollState()), 
-                horizontalAlignment = Alignment.CenterHorizontally, 
-                verticalArrangement = Arrangement.Top 
+                    .verticalScroll(rememberScrollState()),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Top
             ) {
                 if (currentStudentInfo != null) {
                     Text(
-                        currentOperationMessage, 
+                        currentOperationMessage,
                         style = MaterialTheme.typography.bodyLarge,
-                        textAlign = TextAlign.Center, 
-                        modifier = Modifier.padding(bottom = 8.dp), 
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(bottom = 8.dp),
                         color = MaterialTheme.colorScheme.onSurface
                     )
 
-                    if (scanStatus == PortScanner.ScanStatus.Scanning || connectionStatus is ConnectionStatus.Connecting) { 
+                    if (scanStatus == PortScanner.ScanStatus.Scanning || connectionStatus is ConnectionStatus.Connecting) {
                         CircularProgressIndicator(
-                            modifier = Modifier.padding(vertical = 16.dp), 
+                            modifier = Modifier.padding(vertical = 16.dp),
                             color = MaterialTheme.colorScheme.primary
                         )
                     }
@@ -168,70 +167,69 @@ fun HomePage(
                     ConnectionStatusDisplay(connectionStatus)
                     RobotInfoDisplay(robotStatus)
 
-                    Spacer(modifier = Modifier.height(16.dp)) 
-                    MapDisplay(mapBase64 = currentMapBase64)
+                    Spacer(modifier = Modifier.height(16.dp))
 
                     if (connectionStatus !is ConnectionStatus.Connected &&
                         connectionStatus !is ConnectionStatus.Connecting &&
-                        scanStatus != PortScanner.ScanStatus.Scanning) { 
-                        Spacer(modifier = Modifier.height(24.dp)) 
+                        scanStatus != PortScanner.ScanStatus.Scanning) {
+                        Spacer(modifier = Modifier.height(24.dp))
                         Button(
                             onClick = {
-                                println("HomePage: 'Ritenta Scansione e Connessione' button clicked (connectionTrigger before: $connectionTrigger).") 
+                                println("HomePage: Pulsante 'Ritenta Scansione e Connessione' cliccato (connectionTrigger prima: $connectionTrigger).")
                                 coroutineScope.launch {
-                                    currentOperationMessage = "Reset e nuova scansione in corso..." 
-                                    QuizClient.disconnect("User requested retry from HomePage") 
-                                    connectionTrigger++ 
-                                    println("HomePage: connectionTrigger after increment: $connectionTrigger") 
+                                    currentOperationMessage = "Reset e nuova scansione in corso..."
+                                    QuizClient.disconnect("User requested retry from HomePage")
+                                    connectionTrigger++
+                                    println("HomePage: connectionTrigger dopo incremento: $connectionTrigger")
                                 }
                             },
-                            modifier = Modifier.fillMaxWidth(0.8f).height(50.dp), 
+                            modifier = Modifier.fillMaxWidth(0.8f).height(50.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = MaterialTheme.colorScheme.secondary,
                                 contentColor = MaterialTheme.colorScheme.onSecondary
                             )
                         ) {
                             Text(
-                                "Ritenta Scansione e Connessione", 
+                                "Ritenta Scansione e Connessione",
                                 style = MaterialTheme.typography.labelLarge
                             )
                         }
                     }
 
-                    if (!showJoystick || connectionStatus != ConnectionStatus.Connected) { 
-                        Spacer(Modifier.weight(1f)) 
+                    if (!showJoystick || connectionStatus != ConnectionStatus.Connected) {
+                        Spacer(Modifier.weight(1f))
                     }
 
                 } else {
                     Text(
-                        currentOperationMessage, 
+                        currentOperationMessage,
                         style = MaterialTheme.typography.titleLarge,
-                        textAlign = TextAlign.Center, 
+                        textAlign = TextAlign.Center,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                 }
             }
 
-            if (showJoystick && connectionStatus == ConnectionStatus.Connected) { 
+            if (showJoystick && connectionStatus == ConnectionStatus.Connected) {
                 JoystickController(
                     modifier = Modifier
-                        .align(Alignment.BottomCenter) 
-                        .padding(bottom = 32.dp, start = 32.dp, end = 32.dp) 
-                        .fillMaxWidth(), 
-                    size = 180.dp, 
-                    onVelocityChanged = { linearFromJoystick, angularFromJoystick -> 
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 32.dp, start = 32.dp, end = 32.dp)
+                        .fillMaxWidth(),
+                    size = 180.dp,
+                    onVelocityChanged = { linearFromJoystick, angularFromJoystick ->
                         val robotAngularControl = -angularFromJoystick
                         isJoystickCurrentlyActive = abs(linearFromJoystick) > 0.01f || abs(robotAngularControl) > 0.01f
-                        sendZeroVelocityJob.value?.cancel() 
+                        sendZeroVelocityJob.value?.cancel()
                         if (isJoystickCurrentlyActive) {
                             coroutineScope.launch { QuizClient.sendVelocity(
                                 linearFromJoystick,
                                 robotAngularControl
                             ) }
                         } else {
-                            sendZeroVelocityJob.value = coroutineScope.launch { 
-                                delay(100) 
-                                if (!isJoystickCurrentlyActive) QuizClient.sendVelocity(0f, 0f) 
+                            sendZeroVelocityJob.value = coroutineScope.launch {
+                                delay(100)
+                                if (!isJoystickCurrentlyActive) QuizClient.sendVelocity(0f, 0f)
                             }
                         }
                     }
@@ -245,7 +243,7 @@ fun HomePage(
 private fun ConnectionStatusDisplay(status: ConnectionStatus) {
     val (text, color) = when (status) {
         is ConnectionStatus.Connected -> "Stato Connessione: Connesso!" to MaterialTheme.colorScheme.primary
-        is ConnectionStatus.Connecting -> "Stato Connessione: Connessione (${status.message})..." to MaterialTheme.colorScheme.onSurface 
+        is ConnectionStatus.Connecting -> "Stato Connessione: Connessione (${status.message})..." to MaterialTheme.colorScheme.onSurface
         is ConnectionStatus.Disconnected -> "Stato Connessione: Disconnesso (${status.reason})" to MaterialTheme.colorScheme.onSurfaceVariant
         is ConnectionStatus.Error -> "Stato Connessione: Errore (${status.message})" to MaterialTheme.colorScheme.error
     }
@@ -253,8 +251,8 @@ private fun ConnectionStatusDisplay(status: ConnectionStatus) {
         text,
         color = color,
         style = MaterialTheme.typography.bodyMedium,
-        textAlign = TextAlign.Center, 
-        modifier = Modifier.padding(vertical = 4.dp) 
+        textAlign = TextAlign.Center,
+        modifier = Modifier.padding(vertical = 4.dp)
     )
 }
 
@@ -313,48 +311,5 @@ private fun InfoRow(label: String, value: String) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.weight(0.6f)
         )
-    }
-}
-
-@Composable
-private fun MapDisplay(mapBase64: String?) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally, 
-        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp) 
-    ) {
-        Text(
-            "Mappa Robot", 
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.padding(bottom = 8.dp), 
-            color = MaterialTheme.colorScheme.onSurface
-        )
-        val imageBitmap = rememberBase64ImageBitmap(mapBase64) 
-        if (imageBitmap != null) {
-            Image(
-                bitmap = imageBitmap, 
-                contentDescription = "Mappa del Robot", 
-                modifier = Modifier
-                    .fillMaxWidth() 
-                    .aspectRatio(1.77f) 
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                    .padding(2.dp), 
-                contentScale = ContentScale.Fit 
-            )
-        } else {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth() 
-                    .aspectRatio(1.77f) 
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
-                    .padding(16.dp), 
-                contentAlignment = Alignment.Center 
-            ) {
-                Text(
-                    "Mappa: N/A", 
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
     }
 }

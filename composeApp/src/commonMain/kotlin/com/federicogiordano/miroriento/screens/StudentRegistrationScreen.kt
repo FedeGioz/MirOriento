@@ -30,7 +30,8 @@ fun StudentRegistrationScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Text("Benvenuto a MirOriento!", style = MaterialTheme.typography.h4, modifier = Modifier.padding(bottom = 16.dp))
+        Text("Benvenuto a", style = MaterialTheme.typography.h4, modifier = Modifier.padding(bottom = 16.dp).align(Alignment.CenterHorizontally))
+        Text("MirOriento!", style = MaterialTheme.typography.h4, modifier = Modifier.padding(bottom = 16.dp).align(Alignment.CenterHorizontally))
         Text("Per iniziare, inserisci i tuoi dati:", style = MaterialTheme.typography.subtitle1, modifier = Modifier.padding(bottom = 32.dp))
 
         OutlinedTextField(
@@ -57,7 +58,7 @@ fun StudentRegistrationScreen(
             onExpandedChange = {
                 println("ExposedDropdownMenuBox onExpandedChange: $it. Current expanded: $schoolFocusDropdownExpanded")
                 schoolFocusDropdownExpanded = it
-                println("schoolFocusDropdownExpanded is now: $schoolFocusDropdownExpanded")
+                println("schoolFocusDropdownExpanded è ora: $schoolFocusDropdownExpanded")
             },
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -75,19 +76,19 @@ fun StudentRegistrationScreen(
             ExposedDropdownMenu(
                 expanded = schoolFocusDropdownExpanded,
                 onDismissRequest = {
-                    println("ExposedDropdownMenu onDismissRequest. Setting schoolFocusDropdownExpanded to false.")
+                    println("ExposedDropdownMenu onDismissRequest. Impostazione schoolFocusDropdownExpanded su false.")
                     schoolFocusDropdownExpanded = false
-                    println("schoolFocusDropdownExpanded is now: $schoolFocusDropdownExpanded")
+                    println("schoolFocusDropdownExpanded è ora: $schoolFocusDropdownExpanded")
                 },
                 modifier = Modifier.fillMaxWidth()
             ) {
-                println("--- ExposedDropdownMenu content lambda START. schoolFocusDropdownExpanded: $schoolFocusDropdownExpanded ---")
+                println("--- ExposedDropdownMenu contenuto lambda INIZIO. schoolFocusDropdownExpanded: $schoolFocusDropdownExpanded ---")
                 val focusValues = SchoolFocus.entries
-                println("ExposedDropdownMenu: focusValues count = ${focusValues.size}")
+                println("ExposedDropdownMenu: conteggio focusValues = ${focusValues.size}")
 
                 if (focusValues.isEmpty()) {
                     DropdownMenuItem(onClick = {
-                        println("ExposedDropdownMenu: 'Nessun indirizzo' clicked.")
+                        println("ExposedDropdownMenu: Cliccato 'Nessun indirizzo'.")
                         schoolFocusDropdownExpanded = false
                     }, enabled = false) {
                         Text("Nessun indirizzo disponibile")
@@ -95,20 +96,20 @@ fun StudentRegistrationScreen(
                 } else {
                     focusValues.forEach { focus ->
                         DropdownMenuItem(onClick = {
-                            println("ExposedDropdownMenu: Item '${focus.name}' clicked.")
+                            println("ExposedDropdownMenu: Elemento '${focus.name}' cliccato.")
                             selectedFocus = focus
                             schoolFocusDropdownExpanded = false
-                            println("ExposedDropdownMenu: schoolFocusDropdownExpanded set to false by item click.")
+                            println("ExposedDropdownMenu: schoolFocusDropdownExpanded impostato su false dal click dell'elemento.")
                         }) {
                             Text(focus.name.replace('_', ' ').lowercase().split(" ").joinToString(" ") { str -> str.replaceFirstChar(Char::titlecase) })
                         }
                     }
                 }
-                println("--- ExposedDropdownMenu content lambda END ---")
+                println("--- ExposedDropdownMenu contenuto lambda FINE ---")
             }
         }
         LaunchedEffect(schoolFocusDropdownExpanded) {
-            println("LaunchedEffect: schoolFocusDropdownExpanded changed to: $schoolFocusDropdownExpanded")
+            println("LaunchedEffect: schoolFocusDropdownExpanded cambiato a: $schoolFocusDropdownExpanded")
         }
 
 

@@ -21,7 +21,7 @@ class StudentViewModel : ViewModel() {
         get() = QuizClient.currentQuiz.value?.title
 
     init {
-        println("StudentViewModel: Initialized.")
+        println("StudentViewModel: Inizializzato.")
     }
 
     fun registerStudent(name: String, city: String, focus: SchoolFocus) {
@@ -32,13 +32,13 @@ class StudentViewModel : ViewModel() {
         val persistedData = PersistenceService.ensureVisitRecordForToday(info, currentQuizTitle)
         _studentPersistedData.value = persistedData
 
-        println("StudentViewModel: Student registered: $info. Visit record for today ensured.")
-        println("StudentViewModel: Current Persisted Data: $persistedData")
+        println("StudentViewModel: Studente registrato: $info. Record di visita per oggi assicurato.")
+        println("StudentViewModel: Dati persistenti attuali: $persistedData")
     }
 
     fun loadStudentSession(studentId: String) {
         if (studentId.isBlank()) {
-            println("StudentViewModel: Attempted to load session with blank studentId.")
+            println("StudentViewModel: Tentato di caricare la sessione con un studentId vuoto.")
             _studentInfo.value = null
             _studentPersistedData.value = null
             return
@@ -52,15 +52,15 @@ class StudentViewModel : ViewModel() {
 
 
         if (data != null) {
-            println("StudentViewModel: Loaded session for student '${data.studentInfo.name}'. Persisted data: ${_studentPersistedData.value}")
+            println("StudentViewModel: Sessione caricata per lo studente '${data.studentInfo.name}'. Dati persistenti: ${_studentPersistedData.value}")
         } else {
-            println("StudentViewModel: No persisted data found for student ID '$studentId'.")
+            println("StudentViewModel: Nessun dato persistente trovato per l'ID studente '$studentId'.")
         }
     }
 
     fun ensureDataSaved() {
         _studentPersistedData.value?.let {
-            println("StudentViewModel: ensureDataSaved called. Data should be up-to-date via PersistenceService actions.")
+            println("StudentViewModel: ensureDataSaved chiamato. I dati dovrebbero essere aggiornati tramite le azioni di PersistenceService.")
         }
     }
 
@@ -69,6 +69,6 @@ class StudentViewModel : ViewModel() {
     fun clearStudentSession() {
         _studentInfo.value = null
         _studentPersistedData.value = null
-        println("StudentViewModel: Student session cleared (logged out).")
+        println("StudentViewModel: Sessione studente cancellata (disconnesso).")
     }
 }

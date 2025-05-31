@@ -12,19 +12,19 @@ actual object FileSystem {
     actual fun initialize(context: Any?) {
         if (this.appContext == null && context is Context) {
             this.appContext = context.applicationContext
-            println("FileSystem (Android) initialized with Android context.")
+            println("FileSystem (Android) inizializzato con contesto Android.")
         } else if (this.appContext != null) {
-            println("FileSystem (Android) already initialized.")
+            println("FileSystem (Android) già inizializzato.")
         } else if (context == null) {
-            println("Warning: FileSystem (Android) initialize called with null context, and not yet initialized. File operations may fail.")
+            println("Avviso: FileSystem (Android) initialize chiamato con contesto null, e non ancora inizializzato. Le operazioni sui file potrebbero fallire.")
         } else {
-            println("Warning: FileSystem (Android) initialize called with non-Context (${context::class.simpleName}), and not yet initialized.")
+            println("Avviso: FileSystem (Android) initialize chiamato con non-Context (${context::class.simpleName}), e non ancora inizializzato.")
         }
     }
 
     private fun getFilesDir(): File? {
         if (appContext == null) {
-            println("Error: FileSystem (Android for internal files) not initialized. Call initialize(context) first.")
+            println("Errore: FileSystem (Android per i file interni) non inizializzato. Chiamare prima initialize(context).")
             return null
         }
         return appContext?.filesDir
@@ -37,11 +37,11 @@ actual object FileSystem {
             if (file.exists()) {
                 file.readText()
             } else {
-                println("File not found on Android: ${file.absolutePath}")
+                println("File non trovato su Android: ${file.absolutePath}")
                 null
             }
         } catch (e: IOException) {
-            println("Error reading file $fileName on Android: ${e.message}")
+            println("Errore durante la lettura del file $fileName su Android: ${e.message}")
             e.printStackTrace()
             null
         }
@@ -52,10 +52,10 @@ actual object FileSystem {
         val file = File(filesDir, fileName)
         return try {
             file.writeText(content)
-            println("Successfully wrote to file on Android: ${file.absolutePath}")
+            println("Scrittura del file completata con successo su Android: ${file.absolutePath}")
             true
         } catch (e: IOException) {
-            println("Error writing file $fileName on Android: ${e.message}")
+            println("Errore durante la scrittura del file $fileName su Android: ${e.message}")
             e.printStackTrace()
             false
         }

@@ -10,31 +10,31 @@ import com.federicogiordano.miroriento.network.ApplicationContextProvider
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        Log.d("MirOrientoApp", "MainActivity onCreate: TOP OF METHOD")
+        Log.d("MirOrientoApp", "MainActivity onCreate: INIZIO DEL METODO")
 
         ApplicationContextProvider.applicationContext = this.applicationContext
-        Log.d("MirOrientoApp", "MainActivity: ApplicationContextProvider.applicationContext set to: ${this.applicationContext}")
+        Log.d("MirOrientoApp", "MainActivity: ApplicationContextProvider.applicationContext impostato su: ${this.applicationContext}")
 
         try {
             FileSystem.initialize(this.applicationContext)
-            Log.d("MirOrientoApp", "MainActivity: FileSystem.initialize CALLED SUCCESSFULLY with context: ${this.applicationContext}")
+            Log.d("MirOrientoApp", "MainActivity: FileSystem.initialize CHIAMATO CON SUCCESSO con contesto: ${this.applicationContext}")
         } catch (e: Exception) {
-            Log.e("MirOrientoApp", "MainActivity: EXCEPTION during FileSystem.initialize", e)
+            Log.e("MirOrientoApp", "MainActivity: ECCEZIONE durante FileSystem.initialize", e)
         }
 
         setContent {
             App()
         }
-        Log.d("MirOrientoApp", "MainActivity onCreate: setContent called, setup complete.")
+        Log.d("MirOrientoApp", "MainActivity onCreate: setContent chiamato, configurazione completata.")
     }
 
     override fun onStop() {
         super.onStop()
-        Log.d("MirOrientoApp", "MainActivity: onStop called.")
+        Log.d("MirOrientoApp", "MainActivity: onStop chiamato.")
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        Log.d("MirOrientoApp", "MainActivity: onDestroy. Application is closing.")
+        Log.d("MirOrientoApp", "MainActivity: onDestroy. L'applicazione si sta chiudendo.")
     }
 }

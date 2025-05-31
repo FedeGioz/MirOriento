@@ -27,7 +27,7 @@ object PersistenceService {
 
     fun loadStudentData(studentId: String): StudentPersistedData? {
         if (studentId.isBlank()) {
-            println("PersistenceService: Cannot load data for blank studentId.")
+            println("PersistenceService: Impossibile caricare i dati per un studentId vuoto.")
             return null
         }
         val fileName = getStudentDataFileName(studentId)
@@ -36,7 +36,7 @@ object PersistenceService {
             try {
                 json.decodeFromString<StudentPersistedData>(it)
             } catch (e: Exception) {
-                println("PersistenceService: Error decoding student data for '$studentId' from file '$fileName': ${e.message}")
+                println("PersistenceService: Errore durante la decodifica dei dati dello studente per '$studentId' dal file '$fileName': ${e.message}")
                 null
             }
         }
@@ -48,13 +48,13 @@ object PersistenceService {
             val jsonData = json.encodeToString(data)
             val success = FileSystem.writeTextToFile(fileName, jsonData)
             if (success) {
-                println("PersistenceService: Successfully saved data for student '${data.studentInfo.id}' to '$fileName'.")
+                println("PersistenceService: Dati salvati con successo per lo studente '${data.studentInfo.id}' in '$fileName'.")
             } else {
-                println("PersistenceService: Failed to write data for student '${data.studentInfo.id}' to '$fileName'.")
+                println("PersistenceService: Impossibile scrivere i dati per lo studente '${data.studentInfo.id}' in '$fileName'.")
             }
             success
         } catch (e: Exception) {
-            println("PersistenceService: Error encoding student data for '${data.studentInfo.id}': ${e.message}")
+            println("PersistenceService: Errore durante la codifica dei dati dello studente per '${data.studentInfo.id}': ${e.message}")
             false
         }
     }
@@ -77,15 +77,15 @@ object PersistenceService {
         if (visitIndex == -1) {
             val newVisit = VisitRecord(studentId = studentId, visitDate = todayDateStr, quizTitle = currentQuizTitle)
             currentData.visits.add(newVisit)
-            println("PersistenceService: Created new visit record for student '$studentId' for date '$todayDateStr' with quiz title '$currentQuizTitle'.")
+            println("PersistenceService: Creato nuovo record di visita per lo studente '$studentId' per la data '$todayDateStr' con titolo del quiz '$currentQuizTitle'.")
         } else {
             val existingVisit = currentData.visits[visitIndex]
             if (existingVisit.quizTitle == null || (currentQuizTitle != null && existingVisit.quizTitle != currentQuizTitle)) {
                 val updatedVisit = existingVisit.copy(quizTitle = currentQuizTitle)
                 currentData.visits[visitIndex] = updatedVisit
-                println("PersistenceService: Updated quiz title for student '$studentId' for date '$todayDateStr' to '$currentQuizTitle'.")
+                println("PersistenceService: Aggiornato il titolo del quiz per lo studente '$studentId' per la data '$todayDateStr' a '$currentQuizTitle'.")
             }
-            println("PersistenceService: Found existing visit record for student '$studentId' for date '$todayDateStr'.")
+            println("PersistenceService: Trovato record di visita esistente per lo studente '$studentId' per la data '$todayDateStr'.")
         }
         saveStudentData(currentData)
         return currentData
@@ -93,12 +93,12 @@ object PersistenceService {
 
     fun addAnswerToTodaysVisit(studentId: String, question: Question, studentAnswer: QuizAnswer, quizTitle: String?): StudentPersistedData? {
         if (studentId.isBlank()) {
-            println("PersistenceService: Cannot add answer for blank studentId.")
+            println("PersistenceService: Impossibile aggiungere la risposta per un studentId vuoto.")
             return null
         }
         val studentData = loadStudentData(studentId)
         if (studentData == null) {
-            println("PersistenceService: No student data found for $studentId when trying to add answer. Ensure ensureVisitRecordForToday was called.")
+            println("PersistenceService: Nessun dato studente trovato per $studentId durante il tentativo di aggiungere la risposta. Assicurarsi che ensureVisitRecordForToday sia stato chiamato.")
             return null
         }
 
@@ -106,7 +106,7 @@ object PersistenceService {
         var todaysVisit = studentData.visits.find { it.visitDate == todayDateStr && it.studentId == studentId }
 
         if (todaysVisit == null) {
-            println("PersistenceService: No visit record for today ('$todayDateStr') for student '$studentId'. Creating one now to add answer.")
+            println("PersistenceService: Nessun record di visita per oggi ('$todayDateStr') per lo studente '$studentId'. Creazione di uno ora per aggiungere la risposta.")
             todaysVisit = VisitRecord(studentId = studentId, visitDate = todayDateStr, quizTitle = quizTitle)
             studentData.visits.add(todaysVisit)
         } else if (todaysVisit.quizTitle == null && quizTitle != null) {
@@ -134,7 +134,7 @@ object PersistenceService {
         todaysVisit.answers.add(persistedAnswer)
 
         if (saveStudentData(studentData)) {
-            println("PersistenceService: Added/Updated answer with ID '${persistedAnswer.id}' to visit of '$todayDateStr' for student '$studentId'.")
+            println("PersistenceService: Risposta con ID '${persistedAnswer.id}' aggiunta/aggiornata alla visita del '$todayDateStr' per lo studente '$studentId'.")
             return studentData
         }
         return null
@@ -142,12 +142,12 @@ object PersistenceService {
 
     fun updateAnswerInTodaysVisit(studentId: String, evaluatedLiveAnswer: QuizAnswer): StudentPersistedData? {
         if (studentId.isBlank()) {
-            println("PersistenceService: Cannot update answer for blank studentId.")
+            println("PersistenceService: Impossibile aggiornare la risposta per un studentId vuoto.")
             return null
         }
         val studentData = loadStudentData(studentId)
         if (studentData == null) {
-            println("PersistenceService: No data for student '$studentId'. Cannot update answer.")
+            println("PersistenceService: Nessun dato per lo studente '$studentId'. Impossibile aggiornare la risposta.")
             return null
         }
 
@@ -155,7 +155,7 @@ object PersistenceService {
         val visitToUpdate = studentData.visits.find { it.visitDate == todayDateStr && it.studentId == studentId }
 
         if (visitToUpdate == null) {
-            println("PersistenceService: No visit record for today ('$todayDateStr') found for student '$studentId' to update answer with QID '${evaluatedLiveAnswer.questionId}'.")
+            println("PersistenceService: Nessun record di visita per oggi ('$todayDateStr') trovato per lo studente '$studentId' per aggiornare la risposta con QID '${evaluatedLiveAnswer.questionId}'.")
             return null
         }
 
@@ -166,11 +166,11 @@ object PersistenceService {
                 isCorrect = evaluatedLiveAnswer.isCorrect,
             )
             if (saveStudentData(studentData)) {
-                println("PersistenceService: Updated correctness of answer for QID '${evaluatedLiveAnswer.questionId}' in visit of '$todayDateStr' for student '$studentId'.")
+                println("PersistenceService: Correttezza della risposta per QID '${evaluatedLiveAnswer.questionId}' aggiornata nella visita del '$todayDateStr' per lo studente '$studentId'.")
                 return studentData
             }
         } else {
-            println("PersistenceService: Original persisted answer with QID '${evaluatedLiveAnswer.questionId}' not found for student '$studentId' in visit of '$todayDateStr' to update.")
+            println("PersistenceService: Risposta persistita originale con QID '${evaluatedLiveAnswer.questionId}' non trovata per lo studente '$studentId' nella visita del '$todayDateStr' da aggiornare.")
         }
         return null
     }

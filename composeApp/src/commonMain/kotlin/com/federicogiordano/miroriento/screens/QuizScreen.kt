@@ -49,7 +49,7 @@ fun QuizScreen() {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Quiz Mode") },
+                title = { Text("Modalità Quiz") },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
@@ -86,26 +86,26 @@ fun QuizScreen() {
                             }
                         )
                     } ?: Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center, modifier = Modifier.fillMaxSize()) {
-                        Text("Waiting for the professor to send a quiz...", style = MaterialTheme.typography.titleMedium)
-                        Text("(Connected to server)", style = MaterialTheme.typography.bodySmall)
+                        Text("In attesa che il professore invii un quiz...", style = MaterialTheme.typography.titleMedium)
+                        Text("(Connesso al server)", style = MaterialTheme.typography.bodySmall)
                         Spacer(modifier = Modifier.height(16.dp))
                         CircularProgressIndicator()
                     }
                 }
                 is ConnectionStatus.Connecting -> Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center, modifier = Modifier.fillMaxSize()) {
-                    Text("Connecting to quiz server... (${status.message})", style = MaterialTheme.typography.titleMedium)
+                    Text("Connessione al server quiz... (${status.message})", style = MaterialTheme.typography.titleMedium)
                     Spacer(modifier = Modifier.height(16.dp))
                     CircularProgressIndicator()
                 }
                 is ConnectionStatus.Disconnected -> Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center, modifier = Modifier.fillMaxSize()) {
-                    Text("Disconnected from quiz server.", style = MaterialTheme.typography.titleMedium)
-                    Text("Reason: ${status.reason}", style = MaterialTheme.typography.bodySmall)
-                    Text("Please connect via the Home page.", style = MaterialTheme.typography.bodySmall)
+                    Text("Disconnesso dal server quiz.", style = MaterialTheme.typography.titleMedium)
+                    Text("Motivo: ${status.reason}", style = MaterialTheme.typography.bodySmall)
+                    Text("Connettiti tramite la pagina Home.", style = MaterialTheme.typography.bodySmall)
                 }
                 is ConnectionStatus.Error -> Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center, modifier = Modifier.fillMaxSize()) {
-                    Text("Connection Error.", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.error)
+                    Text("Errore di connessione.", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.error)
                     Text(status.message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-                    Text("Please try reconnecting via the Home page.", style = MaterialTheme.typography.bodySmall)
+                    Text("Prova a riconnetterti tramite la pagina Home.", style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
@@ -214,12 +214,12 @@ private fun QuestionItemView(
                     onClick = onSubmitAnswer,
                     enabled = selectedOption != null,
                     modifier = Modifier.align(Alignment.End)
-                ) { Text("Submit Answer") }
+                ) { Text("Invia Risposta") }
             } else {
                 val resultText = when (submittedAnswer.isCorrect) {
-                    true -> "Correct!"
-                    false -> "Incorrect."
-                    null -> "Answer Sent. Awaiting Evaluation..."
+                    true -> "Corretto!"
+                    false -> "Non Corretto."
+                    null -> "Risposta Inviata. In attesa di Valutazione..."
                 }
                 val resultColor = when (submittedAnswer.isCorrect) {
                     true -> Color(0xFF388E3C)
@@ -227,7 +227,7 @@ private fun QuestionItemView(
                     null -> MaterialTheme.colorScheme.onSurfaceVariant
                 }
                 Text(resultText, color = resultColor, style = MaterialTheme.typography.titleMedium, modifier = Modifier.align(Alignment.End))
-                Text("Your answer: ${submittedAnswer.answer}", style = MaterialTheme.typography.bodySmall, modifier = Modifier.align(Alignment.End).padding(top = 4.dp))
+                Text("La tua risposta: ${submittedAnswer.answer}", style = MaterialTheme.typography.bodySmall, modifier = Modifier.align(Alignment.End).padding(top = 4.dp))
             }
         }
     }
@@ -236,10 +236,10 @@ private fun QuestionItemView(
 @Composable
 private fun ConnectionStatusDisplayQuiz(status: ConnectionStatus) {
     val (text, color) = when (status) {
-        is ConnectionStatus.Connected -> "Status: Connected" to Color(0xFF388E3C)
-        is ConnectionStatus.Connecting -> "Status: Connecting..." to MaterialTheme.colorScheme.onSurface
-        is ConnectionStatus.Disconnected -> "Status: Disconnected (${status.reason})" to MaterialTheme.colorScheme.onSurfaceVariant
-        is ConnectionStatus.Error -> "Status: Error (${status.message})" to MaterialTheme.colorScheme.error
+        is ConnectionStatus.Connected -> "Stato: Connesso" to Color(0xFF388E3C)
+        is ConnectionStatus.Connecting -> "Stato: Connessione..." to MaterialTheme.colorScheme.onSurface
+        is ConnectionStatus.Disconnected -> "Stato: Disconnesso (${status.reason})" to MaterialTheme.colorScheme.onSurfaceVariant
+        is ConnectionStatus.Error -> "Stato: Errore (${status.message})" to MaterialTheme.colorScheme.error
     }
     Text(text, color = color, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(bottom = 4.dp))
 }
